@@ -20,9 +20,10 @@
 #include "ruby/encoding.h"
 #include "internal.h"
 #include "node.h"
-#include "parse.h"
+#include "redtree.h"
 #include "id.h"
 #include "regenc.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
@@ -83,6 +84,108 @@ typedef VALUE stack_type;
 #define CMDARG_POP()  BITSTACK_POP(cmdarg_stack)
 #define CMDARG_LEXPOP() BITSTACK_LEXPOP(cmdarg_stack)
 #define CMDARG_P()  BITSTACK_SET_P(cmdarg_stack)
+
+struct parse_stack {
+    int32_t *stack;
+    uint32_t pos;
+    uint32_t capa;
+};
+struct parse_stack *new_redtree_stack();
+int32_t* redtree_stack_pop_n_volatile(struct parser_params* parser,
+                                      unsigned int n);
+int32_t* redtree_stack_pop_n(struct parser_params* parser, unsigned int n);
+void redtree_stack_push(struct parser_params* parser, int32_t val);
+
+typedef uint16_t redtree_token;
+typedef int32_t redtree_sequence_entry;
+
+struct redtree {
+  VALUE source;
+  redtree_token *tokens;
+  struct token_location {
+    uint32_t start_line;
+    uint32_t end_line;
+    uint16_t start_col;
+    uint16_t end_col;
+  } *token_locations;
+  int32_t *sequence;
+  uint32_t token_count;
+  uint32_t sequence_count;
+  uint32_t token_size;
+  uint32_t sequence_size;
+};
+
+struct redtree* redtree_allocate();
+void redtree_init_struct(struct redtree* tree, VALUE source);
+void redtree_lex_token(struct redtree* tree,
+                       redtree_token token_type,
+                       uint32_t token_start_line,
+                       uint32_t token_end_line,
+                       uint16_t token_start_col,
+                       uint16_t token_end_col);
+void redtree_shift_token(struct redtree* tree, uint32_t token_index);
+void redtree_reduce_rule(struct redtree* tree, uint32_t rule_index);
+void redtree_sequence_push(struct redtree* tree, int32_t entry);
+
+#define INITIAL_TOKEN_COUNT 128
+#define INITIAL_SEQUENCE_COUNT 256
+
+struct redtree* redtree_allocate() {
+  return ALLOC_N(struct redtree, 1);
+}
+
+void redtree_init_struct(struct redtree* tree, VALUE source) {
+  tree->source = source;
+  tree->tokens = ALLOC_N(redtree_token, INITIAL_TOKEN_COUNT);
+  tree->token_locations = ALLOC_N(struct token_location, INITIAL_TOKEN_COUNT);
+  tree->token_size = INITIAL_TOKEN_COUNT;
+  tree->token_count = 0;
+  tree->sequence = ALLOC_N(redtree_sequence_entry, INITIAL_SEQUENCE_COUNT);
+  tree->sequence_size = INITIAL_SEQUENCE_COUNT;
+  tree->sequence_count = 0;
+}
+
+void redtree_lex_token(struct redtree* tree,
+                       redtree_token token_type,
+                       uint32_t token_start_line,
+                       uint32_t token_end_line,
+                       uint16_t token_start_col,
+                       uint16_t token_end_col) {
+  tree->tokens[tree->token_count] = token_type;
+  tree->token_locations[tree->token_count].start_line = token_start_line;
+  tree->token_locations[tree->token_count].end_line = token_end_line;
+  tree->token_locations[tree->token_count].start_col = token_start_col;
+  tree->token_locations[tree->token_count].end_col = token_end_col;
+  ++tree->token_count;
+  if (tree->token_count == tree->token_size) {
+    tree->token_size *= 2;
+    tree->tokens = REALLOC_N(tree->tokens, redtree_token, tree->token_size);
+    tree->token_locations = REALLOC_N(
+    tree->token_locations, struct token_location, tree->token_size);
+  }
+}
+
+void redtree_shift_token(struct redtree* tree, uint32_t token_index) {
+  redtree_sequence_push(tree, token_index);
+}
+
+void redtree_reduce_rule(struct redtree* tree, uint32_t rule_index) {
+  redtree_sequence_push(tree, -rule_index);
+}
+
+void redtree_sequence_push(struct redtree* tree, int32_t entry) {
+  tree->sequence[tree->sequence_count] = entry;
+  ++tree->sequence_count;
+  if (tree->sequence_count == tree->sequence_size) {
+    tree->sequence_size *= 2;
+    tree->sequence = REALLOC_N(
+        tree->sequence, redtree_sequence_entry, tree->sequence_size);
+  }
+}
+
+
+#undef INITIAL_TOKEN_COUNT
+#undef INITIAL_SEQUENCE_COUNT
 
 struct vtable {
     ID *tbl;
@@ -225,6 +328,8 @@ struct parser_params {
     int parser_yydebug;
 
     /* Redtree only */
+    struct redtree *parse_tree;
+    struct parse_stack *redtree_stack;
     VALUE parser_ruby_sourcefile_string;
     const char *tokp;
     VALUE delayed;
@@ -358,12 +463,51 @@ static int lvar_defined_gen(struct parser_params*, ID);
 
 /****** Redtree *******/
 
+#define DEFAULT_PARSE_STACK_SIZE 32
+struct parse_stack *new_redtree_stack() {
+    struct parse_stack* result = ALLOC_N(struct parse_stack, 1);
+    result->stack = ALLOC_N(int32_t, DEFAULT_PARSE_STACK_SIZE);
+    result->pos = 0;
+    result->capa = DEFAULT_PARSE_STACK_SIZE;
+    return result;
+}
+#undef DEFAULT_PARSE_STACK_SIZE
+
+int32_t* redtree_stack_pop_n_volatile(struct parser_params* parser,
+                                      unsigned int n) {
+    struct parse_stack* stack = parser->redtree_stack;
+    stack->pos -= n;
+    if (yydebug) {
+      fprintf(stderr, "Redtree: Popped %d from stack.. Stack size %d. \n", n, stack->pos);
+    }
+    return stack->stack + stack->pos;
+}
+
+int32_t* redtree_stack_pop_n(struct parser_params* parser, unsigned int n) {
+  int32_t* result = ALLOC_N(int32_t, n);
+  memcpy(result, redtree_stack_pop_n_volatile(parser, n), sizeof(int32_t) * n);
+  return result;
+}
+
+void redtree_stack_push(struct parser_params* parser, int32_t val) {
+    struct parse_stack* stack = parser->redtree_stack;
+    *(stack->stack + stack->pos) = val;
+    ++stack->pos;
+    if (yydebug) {
+      fprintf(stderr, "Redtree: Pushed token %d. Stack size %d. \n", val, stack->pos);
+    }
+    if (stack->pos == stack->capa) {
+      stack->capa *= 2;
+      stack->stack = REALLOC_N(stack->stack, int32_t, stack->capa);
+    }
+}
+
 #define Redtree_VERSION "0.1.0"
 
 #include "eventids1.c"
-#include "eventids2.c"
 static ID redtree_id_gets;
 
+static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, int rhs_size);
 static VALUE redtree_dispatch0(struct parser_params*,ID);
 static VALUE redtree_dispatch1(struct parser_params*,ID,VALUE);
 static VALUE redtree_dispatch2(struct parser_params*,ID,VALUE,VALUE);
@@ -371,12 +515,7 @@ static VALUE redtree_dispatch3(struct parser_params*,ID,VALUE,VALUE,VALUE);
 static VALUE redtree_dispatch4(struct parser_params*,ID,VALUE,VALUE,VALUE,VALUE);
 static VALUE redtree_dispatch5(struct parser_params*,ID,VALUE,VALUE,VALUE,VALUE,VALUE);
 
-#define dispatch0(n)            redtree_dispatch0(parser, TOKEN_PASTE(redtree_id_, n))
-#define dispatch1(n,a)          redtree_dispatch1(parser, TOKEN_PASTE(redtree_id_, n), (a))
-#define dispatch2(n,a,b)        redtree_dispatch2(parser, TOKEN_PASTE(redtree_id_, n), (a), (b))
-#define dispatch3(n,a,b,c)      redtree_dispatch3(parser, TOKEN_PASTE(redtree_id_, n), (a), (b), (c))
-#define dispatch4(n,a,b,c,d)    redtree_dispatch4(parser, TOKEN_PASTE(redtree_id_, n), (a), (b), (c), (d))
-#define dispatch5(n,a,b,c,d,e)  redtree_dispatch5(parser, TOKEN_PASTE(redtree_id_, n), (a), (b), (c), (d), (e))
+#define reduce_rule(name, size) redtree_reduce(parser, TOKEN_PASTE(redtree_rulenum_, name), size)
 
 #define yyparse redtree_yyparse
 
@@ -386,34 +525,6 @@ static VALUE redtree_id2sym(ID);
 #define redtree_id2sym(id) ((id) < 256 && rb_ispunct(id) ? \
          ID2SYM(id) : redtree_id2sym(id))
 #endif
-
-#define arg_new() dispatch0(args_new)
-#define arg_add(l,a) dispatch2(args_add, (l), (a))
-#define arg_add_star(l,a) dispatch2(args_add_star, (l), (a))
-#define arg_add_block(l,b) dispatch2(args_add_block, (l), (b))
-#define arg_add_optblock(l,b) ((b)==Qundef? (l) : dispatch2(args_add_block, (l), (b)))
-#define bare_assoc(v) dispatch1(bare_assoc_hash, (v))
-#define arg_add_assocs(l,b) arg_add((l), bare_assoc(b))
-
-#define args2mrhs(a) dispatch1(mrhs_new_from_args, (a))
-#define mrhs_new() dispatch0(mrhs_new)
-#define mrhs_add(l,a) dispatch2(mrhs_add, (l), (a))
-#define mrhs_add_star(l,a) dispatch2(mrhs_add_star, (l), (a))
-
-#define mlhs_new() dispatch0(mlhs_new)
-#define mlhs_add(l,a) dispatch2(mlhs_add, (l), (a))
-#define mlhs_add_star(l,a) dispatch2(mlhs_add_star, (l), (a))
-
-#define params_new(pars, opts, rest, pars2, blk) \
-        dispatch5(params, (pars), (opts), (rest), (pars2), (blk))
-
-#define blockvar_new(p,v) dispatch2(block_var, (p), (v))
-#define blockvar_add_star(l,a) dispatch2(block_var_add_star, (l), (a))
-#define blockvar_add_block(l,a) dispatch2(block_var_add_block, (l), (a))
-
-#define method_optarg(m,a) ((a)==Qundef ? (m) : dispatch2(method_add_arg,(m),(a)))
-#define method_arg(m,a) dispatch2(method_add_arg,(m),(a))
-#define method_add_block(m,b) dispatch2(method_add_block, (m), (b))
 
 #define escape_Qundef(x) ((x)==Qundef ? Qnil : (x))
 
@@ -451,10 +562,9 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %parse-param {struct parser_params *parser}
 
 %union {
-    VALUE val;
+    int num;
     NODE *node;
     ID id;
-    int num;
     const struct vtable *vars;
 }
 
@@ -541,6 +651,7 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %type <val>   fsym keyword_variable user_variable sym symbol operation operation2 operation3
 %type <val>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg f_bad_arg
 /*
+  TODO(adgar): Figure out why type clashes w/ default action require <num> below
 */
 %type <val> program reswords then do dot_or_colon
 
@@ -560,7 +671,7 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %token tLSHFT tRSHFT  /* << and >> */
 %token tCOLON2    /* :: */
 %token tCOLON3    /* :: at EXPR_BEG */
-%token <val> tOP_ASGN /* +=, -=  etc. */
+%token <num> tOP_ASGN /* +=, -=  etc. */
 %token tASSOC   /* => */
 %token tLPAREN    /* ( */
 %token tLPAREN_ARG  /* ( */
@@ -573,6 +684,11 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %token tLAMBDA    /* -> */
 %token tSYMBEG tSTRING_BEG tXSTRING_BEG tREGEXP_BEG tWORDS_BEG tQWORDS_BEG
 %token tSTRING_DBEG tSTRING_DVAR tSTRING_END tLAMBEG
+%token '`'
+%token '>'
+%token '<'
+%token '!'
+%token '~'
 
 /*
  *  precedence table
@@ -593,11 +709,11 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %left  tANDOP
 %nonassoc  tCMP tEQ tEQQ tNEQ tMATCH tNMATCH
 %left  '>' tGEQ '<' tLEQ
-%left  '|' '^'
-%left  '&'
+%left   '|' '^'
+%left   '&'
 %left  tLSHFT tRSHFT
-%left  '+' '-'
-%left  '*' '/' '%'
+%left   '+' '-'
+%left   '*' '/' '%'
 %right tUMINUS_NUM tUMINUS
 %right tPOW
 %right '!' '~' tUPLUS
@@ -616,2203 +732,2449 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %token tLAST_TOKEN
 
 %%
-program   :  {
-      lex_state = EXPR_BEG;
-      local_push(0);
-        }
-      top_compstmt
+program   :  
         {
-      $$ = $2;
-      parser->result = dispatch1(program, $$);
-
-      local_pop();
+          lex_state = EXPR_BEG;
+          local_push(0);
+        }
+          top_compstmt
+        {
+          reduce_rule(program__top_compstmt, 1);
+          local_pop();
         }
     ;
 
 top_compstmt  : top_stmts opt_terms
         {
 
-      $$ = $1;
+          reduce_rule(top_compstmt__top_stmts__opt_terms, 2);
         }
     ;
 
 top_stmts : none
-                    {
-      $$ = dispatch2(stmts_add, dispatch0(stmts_new),
-              dispatch0(void_stmt));
+        {
+          reduce_rule(top_stmts__none, 1);
         }
     | top_stmt
         {
-      $$ = dispatch2(stmts_add, dispatch0(stmts_new), $1);
+          reduce_rule(top_stmts__top_stmt, 1);
         }
     | top_stmts terms top_stmt
         {
-      $$ = dispatch2(stmts_add, $1, $3);
+          reduce_rule(top_stmts__top_stmts__terms__top_stmt, 3);
         }
     | error top_stmt
         {
-      $$ = remove_begin($2);
+          reduce_rule(top_stmts__error__top_stmt, 2);
         }
     ;
 
-top_stmt  : stmt
+top_stmt  : stmt 
+        {
+          reduce_rule(top_stmt__stmt, 1);
+        }
     | keyword_BEGIN
         {
-      if (in_def || in_single) {
-          yyerror("BEGIN in method");
-      }
+          if (in_def || in_single) {
+            yyerror("BEGIN in method");
+          }
         }
-      '{' top_compstmt '}'
+          '{' top_compstmt '}'
         {
-      $$ = dispatch1(BEGIN, $4);
+          reduce_rule(top_stmt__keyword_BEGIN__LC__top_compstmt__RC, 4);
         }
     ;
 
 bodystmt  : compstmt
-      opt_rescue
-      opt_else
-      opt_ensure
+          opt_rescue
+          opt_else
+          opt_ensure
         {
-      $$ = dispatch4(bodystmt,
-               escape_Qundef($1),
-               escape_Qundef($2),
-               escape_Qundef($3),
-               escape_Qundef($4));
+          reduce_rule(bodystmt__compstmt__opt_rescue__opt_else__opt_ensure, 4);
         }
     ;
 
 compstmt  : stmts opt_terms
         {
-
-      $$ = $1;
+          reduce_rule(compstmt__stmts__opt_terms, 2);
         }
     ;
 
 stmts   : none
-                    {
-      $$ = dispatch2(stmts_add, dispatch0(stmts_new),
-              dispatch0(void_stmt));
+        {
+          reduce_rule(stmts__none, 1);
         }
     | stmt
         {
-      $$ = dispatch2(stmts_add, dispatch0(stmts_new), $1);
+          reduce_rule(stmts__stmt, 1);
         }
     | stmts terms stmt
         {
-      $$ = dispatch2(stmts_add, $1, $3);
+          reduce_rule(stmts__stmts__terms__stmt, 3);
         }
     | error stmt
         {
-      $$ = remove_begin($2);
+          reduce_rule(stmts__error__stmt, 2);
         }
     ;
 
 stmt    : keyword_alias fitem {lex_state = EXPR_FNAME;} fitem
         {
-      $$ = dispatch2(alias, $2, $4);
+          reduce_rule(stmt__keyword_alias__fitem__fitem, 3);
         }
     | keyword_alias tGVAR tGVAR
         {
-      $$ = dispatch2(var_alias, $2, $3);
+          reduce_rule(stmt__keyword_alias__tGVAR__tGVAR, 3);
         }
     | keyword_alias tGVAR tBACK_REF
         {
-      $$ = dispatch2(var_alias, $2, $3);
+          reduce_rule(stmt__keyword_alias__tGVAR__tBACK_REF, 3);
         }
     | keyword_alias tGVAR tNTH_REF
         {
-      $$ = dispatch2(var_alias, $2, $3);
-      $$ = dispatch1(alias_error, $$);
+          reduce_rule(stmt__keyword_alias__tGVAR__tNTH_REF, 3);
         }
     | keyword_undef undef_list
         {
-      $$ = dispatch1(undef, $2);
+          reduce_rule(stmt__keyword_undef__undef_list, 2);
         }
     | stmt modifier_if expr_value
         {
-      $$ = dispatch2(if_mod, $3, $1);
+          reduce_rule(stmt__stmt__modifier_if__expr_value, 3);
         }
     | stmt modifier_unless expr_value
         {
-      $$ = dispatch2(unless_mod, $3, $1);
+          reduce_rule(stmt__stmt__modifier_unless__expr_value, 3);
         }
     | stmt modifier_while expr_value
         {
-      $$ = dispatch2(while_mod, $3, $1);
+          reduce_rule(stmt__stmt__modifier_while__expr_value, 3);
         }
     | stmt modifier_until expr_value
         {
-      $$ = dispatch2(until_mod, $3, $1);
+          reduce_rule(stmt__stmt__modifier_until__expr_value, 3);
         }
     | stmt modifier_rescue stmt
         {
-      $$ = dispatch2(rescue_mod, $1, $3);
+          reduce_rule(stmt__stmt__modifier_rescue__stmt, 3);
         }
     | keyword_END '{' compstmt '}'
         {
-      if (in_def || in_single) {
+          if (in_def || in_single) {
           rb_warn0("END in method; use at_exit");
-      }
-      $$ = dispatch1(END, $3);
+          }
+          reduce_rule(stmt__keyword_END__LC__compstmt__RC, 4);
         }
     | command_asgn
+        {
+            reduce_rule(stmt__command_asgn, 1);
+        }
     | mlhs '=' command_call
         {
-      $$ = dispatch2(massign, $1, $3);
+          reduce_rule(stmt__mlhs__EQ__command_call, 3);
         }
     | var_lhs tOP_ASGN command_call
         {
-      $$ = dispatch3(opassign, $1, $2, $3);
+          reduce_rule(stmt__var_lhs__tOP_ASGN__command_call, 3);
         }
     | primary_value '[' opt_call_args rbracket tOP_ASGN command_call
         {
-      $$ = dispatch2(aref_field, $1, escape_Qundef($3));
-      $$ = dispatch3(opassign, $$, $5, $6);
+          reduce_rule(stmt__primary_value__LS__opt_call_args__rbracket__tOP_ASGN__command_call, 6);
         }
     | primary_value '.' tIDENTIFIER tOP_ASGN command_call
         {
-      $$ = dispatch3(field, $1, redtree_id2sym('.'), $3);
-      $$ = dispatch3(opassign, $$, $4, $5);
+          reduce_rule(stmt__primary_value__DOT__tIDENTIFIER__tOP_ASGN__command_call, 5);
         }
     | primary_value '.' tCONSTANT tOP_ASGN command_call
         {
-      $$ = dispatch3(field, $1, redtree_id2sym('.'), $3);
-      $$ = dispatch3(opassign, $$, $4, $5);
+          reduce_rule(stmt__primary_value__DOT__tCONSTANT__tOP_ASGN__command_call, 5);
         }
     | primary_value tCOLON2 tCONSTANT tOP_ASGN command_call
         {
-      $$ = dispatch2(const_path_field, $1, $3);
-      $$ = dispatch3(opassign, $$, $4, $5);
-      $$ = dispatch1(assign_error, $$);
+          reduce_rule(stmt__primary_value__tCOLON2__tCONSTANT__tOP_ASGN__command_call, 5);
         }
     | primary_value tCOLON2 tIDENTIFIER tOP_ASGN command_call
         {
-      $$ = dispatch3(field, $1, redtree_intern("::"), $3);
-      $$ = dispatch3(opassign, $$, $4, $5);
+          reduce_rule(stmt__primary_value__tCOLON2__tIDENTIFIER__tOP_ASGN__command_call, 5);
         }
     | backref tOP_ASGN command_call
         {
-      $$ = dispatch2(assign, dispatch1(var_field, $1), $3);
-      $$ = dispatch1(assign_error, $$);
+          reduce_rule(stmt__backref__tOP_ASGN__command_call, 3);
         }
     | lhs '=' mrhs
         {
-      $$ = dispatch2(assign, $1, $3);
+          reduce_rule(stmt__lhs__EQ__mrhs, 3);
         }
     | mlhs '=' arg_value
         {
-      $$ = dispatch2(massign, $1, $3);
+          reduce_rule(stmt__mlhs__EQ__arg_value, 3);
         }
     | mlhs '=' mrhs
         {
-      $$ = dispatch2(massign, $1, $3);
+          reduce_rule(stmt__mlhs__EQ__mrhs, 3);
         }
     | expr
+        {
+            reduce_rule(stmt__expr, 1);
+        }
     ;
 
 command_asgn  : lhs '=' command_call
         {
-      $$ = dispatch2(assign, $1, $3);
+          reduce_rule(command_asgn__lhs__EQ__command_call, 3);
         }
     | lhs '=' command_asgn
         {
-      $$ = dispatch2(assign, $1, $3);
+          reduce_rule(command_asgn__lhs__EQ__command_asgn, 3);
         }
     ;
 
 
 expr    : command_call
+        {
+          reduce_rule(expr__command_call, 1);
+        }
     | expr keyword_and expr
         {
-      $$ = dispatch3(binary, $1, redtree_intern("and"), $3);
+          reduce_rule(expr__expr__keyword_and__expr, 3);
         }
     | expr keyword_or expr
         {
-      $$ = dispatch3(binary, $1, redtree_intern("or"), $3);
+          reduce_rule(expr__expr__keyword_or__expr, 3);
         }
     | keyword_not opt_nl expr
         {
-      $$ = dispatch2(unary, redtree_intern("not"), $3);
+          reduce_rule(expr__keyword_not__opt_nl__expr, 3);
         }
     | '!' command_call
         {
-      $$ = dispatch2(unary, redtree_id2sym('!'), $2);
+          reduce_rule(expr__BANG__command_call, 2);
         }
     | arg
+        {
+          reduce_rule(expr__arg, 1);
+        }
     ;
 
 expr_value  : expr
         {
-      $$ = $1;
+          reduce_rule(expr_value__expr, 1);
         }
     ;
 
 command_call  : command
+        {
+          reduce_rule(command_call__command, 1);
+        }
     | block_command
+        {
+          reduce_rule(command_call__block_command, 1);
+        }
     ;
 
 block_command : block_call
+        {
+          reduce_rule(block_command__block_call, 1);
+        }
     | block_call '.' operation2 command_args
         {
-      $$ = dispatch3(call, $1, redtree_id2sym('.'), $3);
-      $$ = method_arg($$, $4);
+          reduce_rule(block_command__block_call__DOT__operation2__command_args, 4);
         }
     | block_call tCOLON2 operation2 command_args
         {
-      $$ = dispatch3(call, $1, redtree_intern("::"), $3);
-      $$ = method_arg($$, $4);
+          reduce_rule(block_command__block_call__tCOLON2__operation2__command_args, 4);
         }
     ;
 
 cmd_brace_block : tLBRACE_ARG
         {
-      $<vars>1 = dyna_push();
+          $<vars>1 = dyna_push();
         }
-      opt_block_param
-      compstmt
-      '}'
+          opt_block_param compstmt '}'
         {
-      $$ = dispatch2(brace_block, escape_Qundef($3), $4);
+          reduce_rule(cmd_brace_block__tLBRACE_ARG__opt_block_param__compstmt__RC, 4);
 
-      dyna_pop($<vars>1);
+          dyna_pop($<vars>1);
         }
     ;
 
-command   : operation command_args       %prec tLOWEST
+command   : operation command_args  %prec tLOWEST
         {
-      $$ = dispatch2(command, $1, $2);
+          reduce_rule(command__operation__command_args, 2);
         }
     | operation command_args cmd_brace_block
         {
-      $$ = dispatch2(command, $1, $2);
-      $$ = method_add_block($$, $3);
+          reduce_rule(command__operation__command_args__cmd_brace_block, 3);
         }
     | primary_value '.' operation2 command_args %prec tLOWEST
         {
-      $$ = dispatch4(command_call, $1, redtree_id2sym('.'), $3, $4);
+          reduce_rule(command__primary_value__DOT__operation2__command_args, 4);
         }
     | primary_value '.' operation2 command_args cmd_brace_block
         {
-      $$ = dispatch4(command_call, $1, redtree_id2sym('.'), $3, $4);
-      $$ = method_add_block($$, $5);
+          reduce_rule(command__primary_value__DOT__operation2__command_args__cmd_brace_block, 5);
        }
     | primary_value tCOLON2 operation2 command_args %prec tLOWEST
         {
-      $$ = dispatch4(command_call, $1, redtree_intern("::"), $3, $4);
+          reduce_rule(command__primary_value__tCOLON2__operation2__command_args, 4);
         }
     | primary_value tCOLON2 operation2 command_args cmd_brace_block
         {
-      $$ = dispatch4(command_call, $1, redtree_intern("::"), $3, $4);
-      $$ = method_add_block($$, $5);
+          reduce_rule(command__primary_value__tCOLON2__operation2__command_args__cmd_brace_block, 5);
        }
     | keyword_super command_args
         {
-      $$ = dispatch1(super, $2);
+          reduce_rule(command__keyword_super__command_args, 2);
         }
     | keyword_yield command_args
         {
-      $$ = dispatch1(yield, $2);
+          reduce_rule(command__keyword_yield__command_args, 2);
         }
     | keyword_return call_args
         {
-      $$ = dispatch1(return, $2);
+          reduce_rule(command__keyword_return__call_args, 2);
         }
     | keyword_break call_args
         {
-      $$ = dispatch1(break, $2);
+          reduce_rule(command__keyword_break__call_args, 2);
         }
     | keyword_next call_args
         {
-      $$ = dispatch1(next, $2);
+          reduce_rule(command__keyword_next__call_args, 2);
         }
     ;
 
 mlhs    : mlhs_basic
+        {
+          reduce_rule(mlhs__mlhs_basic, 1);
+        }
     | tLPAREN mlhs_inner rparen
         {
-      $$ = dispatch1(mlhs_paren, $2);
+          reduce_rule(mlhs__tLPAREN__mlhs_inner__rparen, 3);
         }
     ;
 
 mlhs_inner  : mlhs_basic
+        {
+          reduce_rule(mlhs_inner__mlhs_basic, 1);
+        }
     | tLPAREN mlhs_inner rparen
         {
-      $$ = dispatch1(mlhs_paren, $2);
+          reduce_rule(mlhs_inner__tLPAREN__mlhs_inner__rparen, 3);
         }
     ;
 
 mlhs_basic  : mlhs_head
         {
-      $$ = $1;
+          reduce_rule(mlhs_basic__mlhs_head, 1);
         }
     | mlhs_head mlhs_item
         {
-      $$ = mlhs_add($1, $2);
+          reduce_rule(mlhs_basic__mlhs_head__mlhs_item, 2);
         }
     | mlhs_head tSTAR mlhs_node
         {
-      $$ = mlhs_add_star($1, $3);
+          reduce_rule(mlhs_basic__mlhs_head__tSTAR__mlhs_node, 3);
         }
     | mlhs_head tSTAR mlhs_node ',' mlhs_post
         {
-      $1 = mlhs_add_star($1, $3);
-      $$ = mlhs_add($1, $5);
+          reduce_rule(mlhs_basic__mlhs_head__tSTAR__mlhs_node__COMMA__mlhs_post, 5);
         }
     | mlhs_head tSTAR
         {
-      $$ = mlhs_add_star($1, Qnil);
+          reduce_rule(mlhs_basic__mlhs_head__tSTAR, 2);
         }
     | mlhs_head tSTAR ',' mlhs_post
         {
-      $1 = mlhs_add_star($1, Qnil);
-      $$ = mlhs_add($1, $4);
+          reduce_rule(mlhs_basic__mlhs_head__tSTAR__COMMA__mlhs_post, 4);
         }
     | tSTAR mlhs_node
         {
-      $$ = mlhs_add_star(mlhs_new(), $2);
+          reduce_rule(mlhs_basic__tSTAR__mlhs_node, 2);
         }
     | tSTAR mlhs_node ',' mlhs_post
         {
-      $2 = mlhs_add_star(mlhs_new(), $2);
-      $$ = mlhs_add($2, $4);
+          reduce_rule(mlhs_basic__tSTAR__mlhs_node__COMMA__mlhs_post, 4);
         }
     | tSTAR
         {
-      $$ = mlhs_add_star(mlhs_new(), Qnil);
+          reduce_rule(mlhs_basic__tSTAR, 1);
         }
     | tSTAR ',' mlhs_post
         {
-      $$ = mlhs_add_star(mlhs_new(), Qnil);
-      $$ = mlhs_add($$, $3);
+          reduce_rule(mlhs_basic__tSTAR__COMMA__mlhs_post, 3);
         }
     ;
 
 mlhs_item : mlhs_node
+        {
+          reduce_rule(mlhs_item__mlhs_node, 1);
+        }
     | tLPAREN mlhs_inner rparen
         {
-      $$ = dispatch1(mlhs_paren, $2);
+          reduce_rule(mlhs_item__tLPAREN__mlhs_inner__rparen, 3);
         }
     ;
 
 mlhs_head : mlhs_item ','
         {
-      $$ = mlhs_add(mlhs_new(), $1);
+          reduce_rule(mlhs_head__mlhs_item__COMMA, 2);
         }
     | mlhs_head mlhs_item ','
         {
-      $$ = mlhs_add($1, $2);
+          reduce_rule(mlhs_head__mlhs_head__mlhs_item__COMMA, 3);
         }
     ;
 
 mlhs_post : mlhs_item
         {
-      $$ = mlhs_add(mlhs_new(), $1);
+          reduce_rule(mlhs_post__mlhs_item, 1);
         }
     | mlhs_post ',' mlhs_item
         {
-      $$ = mlhs_add($1, $3);
+          reduce_rule(mlhs_post__mlhs_post__COMMA__mlhs_item, 3);
         }
     ;
 
 mlhs_node : user_variable
         {
-      $$ = assignable($1, 0);
+          assignable($1, 0);
+          reduce_rule(mlhs_node__user_variable, 1);
         }
     | keyword_variable
         {
-            $$ = assignable($1, 0);
+          assignable($1, 0);
+          reduce_rule(mlhs_node__keyword_variable, 1);
         }
     | primary_value '[' opt_call_args rbracket
         {
-      $$ = dispatch2(aref_field, $1, escape_Qundef($3));
+          reduce_rule(mlhs_node__primary_value__LS__opt_call_args__rbracket, 4);
         }
     | primary_value '.' tIDENTIFIER
         {
-      $$ = dispatch3(field, $1, redtree_id2sym('.'), $3);
+          reduce_rule(mlhs_node__primary_value__DOT__tIDENTIFIER, 3);
         }
     | primary_value tCOLON2 tIDENTIFIER
         {
-      $$ = dispatch2(const_path_field, $1, $3);
+          reduce_rule(mlhs_node__primary_value__tCOLON2__tIDENTIFIER, 3);
         }
     | primary_value '.' tCONSTANT
         {
-      $$ = dispatch3(field, $1, redtree_id2sym('.'), $3);
+          reduce_rule(mlhs_node__primary_value__DOT__tCONSTANT, 3);
         }
     | primary_value tCOLON2 tCONSTANT
         {
-      if (in_def || in_single)
-          yyerror("dynamic constant assignment");
-      $$ = dispatch2(const_path_field, $1, $3);
+          if (in_def || in_single)
+            yyerror("dynamic constant assignment");
+          reduce_rule(mlhs_node__primary_value__tCOLON3__tCONSTANT, 3);
         }
     | tCOLON3 tCONSTANT
         {
-      $$ = dispatch1(top_const_field, $2);
+          reduce_rule(mlhs_node__tCOLON3__tCONSTANT, 2);
         }
     | backref
         {
-      $$ = dispatch1(var_field, $1);
-      $$ = dispatch1(assign_error, $$);
+          reduce_rule(mlhs_node__backref, 1);
         }
     ;
 
 lhs   : user_variable
         {
-      $$ = assignable($1, 0);
-      $$ = dispatch1(var_field, $$);
+          assignable($1, 0);
+          reduce_rule(lhs__user_variable, 1);
         }
     | keyword_variable
         {
-            $$ = assignable($1, 0);
-            $$ = dispatch1(var_field, $$);
+          assignable($1, 0);
+          reduce_rule(lhs__keyword_variable, 1);
         }
     | primary_value '[' opt_call_args rbracket
         {
-      $$ = dispatch2(aref_field, $1, escape_Qundef($3));
+          reduce_rule(lhs__primary_value__LS__opt_call_args__rbracket, 4);
         }
     | primary_value '.' tIDENTIFIER
         {
-      $$ = dispatch3(field, $1, redtree_id2sym('.'), $3);
+          reduce_rule(lhs__primary_value__DOT__tIDENTIFIER, 3);
         }
     | primary_value tCOLON2 tIDENTIFIER
         {
-      $$ = dispatch3(field, $1, redtree_intern("::"), $3);
+          reduce_rule(lhs__primary_value__tCOLON2__tIDENTIFIER, 3);
         }
     | primary_value '.' tCONSTANT
         {
-      $$ = dispatch3(field, $1, redtree_id2sym('.'), $3);
+          reduce_rule(lhs__primary_value__DOT__tCONSTANT, 3);
         }
     | primary_value tCOLON2 tCONSTANT
         {
-      $$ = dispatch2(const_path_field, $1, $3);
-      if (in_def || in_single) {
-          $$ = dispatch1(assign_error, $$);
-      }
+          if (in_def || in_single)
+            yyerror("dynamic constant assignment");
+          reduce_rule(lhs__primary_value__tCOLON3__tCONSTANT, 3);
         }
     | tCOLON3 tCONSTANT
         {
-      $$ = dispatch1(top_const_field, $2);
-      if (in_def || in_single) {
-          $$ = dispatch1(assign_error, $$);
-      }
+          reduce_rule(lhs__tCOLON3__tCONSTANT, 2);
         }
     | backref
         {
-      $$ = dispatch1(assign_error, $1);
+          reduce_rule(lhs__backref, 1);
         }
     ;
 
 cname   : tIDENTIFIER
         {
-      $$ = dispatch1(class_name_error, $1);
+          reduce_rule(cname__tIDENTIFIER, 1);
         }
     | tCONSTANT
+        {
+          reduce_rule(cname__tCONSTANT, 1);
+        }
     ;
 
 cpath   : tCOLON3 cname
         {
-      $$ = dispatch1(top_const_ref, $2);
+          reduce_rule(cpath__tCOLON3__cname, 2);
         }
     | cname
         {
-      $$ = dispatch1(const_ref, $1);
+          reduce_rule(cpath__cname, 1);
         }
     | primary_value tCOLON2 cname
         {
-      $$ = dispatch2(const_path_ref, $1, $3);
+          reduce_rule(cpath__primary_value__tCOLON2__cname, 3);
         }
     ;
 
 fname   : tIDENTIFIER
+        {
+          reduce_rule(fname__tIDENTIFIER, 1);
+        }
     | tCONSTANT
+        {
+          reduce_rule(fname__tCONSTANT, 1);
+        }
     | tFID
+        {
+          reduce_rule(fname__tFID, 1);
+        }
     | op
         {
-      lex_state = EXPR_ENDFN;
-      $$ = $1;
+          lex_state = EXPR_ENDFN;
+          reduce_rule(fname__op, 1);
         }
     | reswords
         {
-      lex_state = EXPR_ENDFN;
-      $$ = $1;
+          lex_state = EXPR_ENDFN;
+          reduce_rule(fname__reswords, 1);
         }
     ;
 
 fsym    : fname
+        {
+          reduce_rule(fsym__fname, 1);
+        }
     | symbol
+        {
+          reduce_rule(fsym__symbol, 1);
+        }
     ;
 
 fitem   : fsym
         {
-      $$ = dispatch1(symbol_literal, $1);
+          reduce_rule(fitem__fsym, 1);
         }
     | dsym
+        {
+          reduce_rule(fitem__dsym, 1);
+        }
     ;
 
 undef_list  : fitem
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(undef_list__fitem, 1);
         }
     | undef_list ',' {lex_state = EXPR_FNAME;} fitem
         {
-      rb_ary_push($1, $4);
+          reduce_rule(undef_list__COMMA__fitem, 2);
         }
     ;
 
-op    : '|'   
-    | '^'     
-    | '&'     
-    | tCMP    
-    | tEQ     
-    | tEQQ    
-    | tMATCH  
-    | tNMATCH 
-    | '>'     
-    | tGEQ    
-    | '<'     
-    | tLEQ    
-    | tNEQ    
-    | tLSHFT  
-    | tRSHFT  
-    | '+'     
-    | '-'     
-    | '*'     
-    | tSTAR   
-    | '/'     
-    | '%'     
-    | tPOW    
-    | '!'     
-    | '~'     
-    | tUPLUS  
-    | tUMINUS 
-    | tAREF   
-    | tASET   
-    | '`'     
+op    : '|'     { reduce_rule(op__OR, 1); }
+      | '^'     { reduce_rule(op__CARET, 1); }
+      | '&'     { reduce_rule(op__AND, 1); }
+      | tCMP    { reduce_rule(op__tCMP, 1); }
+      | tEQ     { reduce_rule(op__tEQ, 1); }
+      | tEQQ    { reduce_rule(op__tEQQ, 1); }
+      | tMATCH  { reduce_rule(op__tMATCH, 1); }
+      | tNMATCH { reduce_rule(op__tNMATCH, 1); }
+      | '>'     { reduce_rule(op__GT, 1); }
+      | tGEQ    { reduce_rule(op__tGEQ, 1); }
+      | '<'     { reduce_rule(op__LE, 1); }
+      | tLEQ    { reduce_rule(op__tLEQ, 1); }
+      | tNEQ    { reduce_rule(op__tNEQ, 1); }
+      | tLSHFT  { reduce_rule(op__tLSHFT, 1); }
+      | tRSHFT  { reduce_rule(op__tRSHFT, 1); }
+      | '+'     { reduce_rule(op__PLUS, 1); }
+      | '-'     { reduce_rule(op__MINUS, 1); }
+      | '*'     { reduce_rule(op__TIMES, 1); }
+      | tSTAR   { reduce_rule(op__tSTAR, 1); }
+      | '/'     { reduce_rule(op__DIVIDE, 1); }
+      | '%'     { reduce_rule(op__MOD, 1); }
+      | tPOW    { reduce_rule(op__tPOW, 1); }
+      | '!'     { reduce_rule(op__BANG, 1); }
+      | '~'     { reduce_rule(op__TILDE, 1); }
+      | tUPLUS  { reduce_rule(op__tUPLUS, 1); }
+      | tUMINUS { reduce_rule(op__tUMINUS, 1); }
+      | tAREF   { reduce_rule(op__tAREF, 1); }
+      | tASET   { reduce_rule(op__tASET, 1); }
+      | '`'     { reduce_rule(op__BACKTICK, 1); }
     ;
 
-reswords  : keyword__LINE__ | keyword__FILE__ | keyword__ENCODING__
-    | keyword_BEGIN | keyword_END
-    | keyword_alias | keyword_and | keyword_begin
-    | keyword_break | keyword_case | keyword_class | keyword_def
-    | keyword_defined | keyword_do | keyword_else | keyword_elsif
-    | keyword_end | keyword_ensure | keyword_false
-    | keyword_for | keyword_in | keyword_module | keyword_next
-    | keyword_nil | keyword_not | keyword_or | keyword_redo
-    | keyword_rescue | keyword_retry | keyword_return | keyword_self
-    | keyword_super | keyword_then | keyword_true | keyword_undef
-    | keyword_when | keyword_yield | keyword_if | keyword_unless
-    | keyword_while | keyword_until
+reswords  : keyword__LINE__ { reduce_rule(reswords__keyword__LINE__, 2); }
+          | keyword__FILE__ { reduce_rule(reswords__keyword__FILE__, 2); }
+          | keyword__ENCODING__ { reduce_rule(reswords__keyword__ENCODING__, 2); }
+          | keyword_BEGIN { reduce_rule(reswords__keyword_BEGIN, 1); }
+          | keyword_END { reduce_rule(reswords__keyword_END, 1); }
+          | keyword_alias { reduce_rule(reswords__keyword_alias, 1); }
+          | keyword_and { reduce_rule(reswords__keyword_and, 1); }
+          | keyword_begin { reduce_rule(reswords__keyword_begin, 1); }
+          | keyword_break { reduce_rule(reswords__keyword_break, 1); }
+          | keyword_case { reduce_rule(reswords__keyword_case, 1); }
+          | keyword_class { reduce_rule(reswords__keyword_class, 1); }
+          | keyword_def { reduce_rule(reswords__keyword_def, 1); }
+          | keyword_defined { reduce_rule(reswords__keyword_defined, 1); }
+          | keyword_do { reduce_rule(reswords__keyword_do, 1); }
+          | keyword_else { reduce_rule(reswords__keyword_else, 1); }
+          | keyword_elsif { reduce_rule(reswords__keyword_elsif, 1); }
+          | keyword_end { reduce_rule(reswords__keyword_end, 1); }
+          | keyword_ensure { reduce_rule(reswords__keyword_ensure, 1); }
+          | keyword_false { reduce_rule(reswords__keyword_false, 1); }
+          | keyword_for { reduce_rule(reswords__keyword_for, 1); }
+          | keyword_in { reduce_rule(reswords__keyword_in, 1); }
+          | keyword_module { reduce_rule(reswords__keyword_module, 1); }
+          | keyword_next { reduce_rule(reswords__keyword_next, 1); }
+          | keyword_nil { reduce_rule(reswords__keyword_nil, 1); }
+          | keyword_not { reduce_rule(reswords__keyword_not, 1); }
+          | keyword_or { reduce_rule(reswords__keyword_or, 1); }
+          | keyword_redo { reduce_rule(reswords__keyword_redo, 1); }
+          | keyword_rescue { reduce_rule(reswords__keyword_rescue, 1); }
+          | keyword_retry { reduce_rule(reswords__keyword_retry, 1); }
+          | keyword_return { reduce_rule(reswords__keyword_return, 1); }
+          | keyword_self { reduce_rule(reswords__keyword_self, 1); }
+          | keyword_super { reduce_rule(reswords__keyword_super, 1); }
+          | keyword_then { reduce_rule(reswords__keyword_then, 1); }
+          | keyword_true { reduce_rule(reswords__keyword_true, 1); }
+          | keyword_undef { reduce_rule(reswords__keyword_undef, 1); }
+          | keyword_when { reduce_rule(reswords__keyword_when, 1); }
+          | keyword_yield { reduce_rule(reswords__keyword_yield, 1); }
+          | keyword_if { reduce_rule(reswords__keyword_if, 1); }
+          | keyword_unless { reduce_rule(reswords__keyword_unless, 1); }
+          | keyword_while { reduce_rule(reswords__keyword_while, 1); }
+          | keyword_until { reduce_rule(reswords__keyword_until, 1); }
     ;
 
 arg   : lhs '=' arg
         {
-      $$ = dispatch2(assign, $1, $3);
+          reduce_rule(arg__lhs__EQ__arg, 3);
         }
     | lhs '=' arg modifier_rescue arg
         {
-      $$ = dispatch2(assign, $1, dispatch2(rescue_mod, $3, $5));
+          reduce_rule(arg__lhs__EQ__arg__modifier_rescue__arg, 5);
         }
     | var_lhs tOP_ASGN arg
         {
-      $$ = dispatch3(opassign, $1, $2, $3);
+          reduce_rule(arg__var_lhs__tOP_ASGN__arg, 3);
         }
     | var_lhs tOP_ASGN arg modifier_rescue arg
         {
-      $3 = dispatch2(rescue_mod, $3, $5);
-      $$ = dispatch3(opassign, $1, $2, $3);
+          reduce_rule(arg__var_lhs__tOP_ASGN__arg__modifier_rescue__arg, 5);
         }
     | primary_value '[' opt_call_args rbracket tOP_ASGN arg
         {
-      $1 = dispatch2(aref_field, $1, escape_Qundef($3));
-      $$ = dispatch3(opassign, $1, $5, $6);
+          reduce_rule(arg__primary_value__LS__opt_call_args__rbracket__tOP_ASGN__arg, 6);
         }
     | primary_value '.' tIDENTIFIER tOP_ASGN arg
         {
-      $1 = dispatch3(field, $1, redtree_id2sym('.'), $3);
-      $$ = dispatch3(opassign, $1, $4, $5);
+          reduce_rule(arg__primary_value__DOT__tIDENTIFIER__tOP_ASGN__arg, 5);
         }
     | primary_value '.' tCONSTANT tOP_ASGN arg
         {
-      $1 = dispatch3(field, $1, redtree_id2sym('.'), $3);
-      $$ = dispatch3(opassign, $1, $4, $5);
+          reduce_rule(arg__primary_value__DOT__tCONSTANT__tOP_ASGN__arg, 5);
         }
     | primary_value tCOLON2 tIDENTIFIER tOP_ASGN arg
         {
-      $1 = dispatch3(field, $1, redtree_intern("::"), $3);
-      $$ = dispatch3(opassign, $1, $4, $5);
+          reduce_rule(arg__primary_value__tCOLON2__tIDENTIFIER__tOP_ASGN__arg, 5);
         }
     | primary_value tCOLON2 tCONSTANT tOP_ASGN arg
         {
-      $$ = dispatch2(const_path_field, $1, $3);
-      $$ = dispatch3(opassign, $$, $4, $5);
-      $$ = dispatch1(assign_error, $$);
+          reduce_rule(arg__primary_value__tCOLON2__tCONSTANT__tOP_ASGN__arg, 5);
         }
     | tCOLON3 tCONSTANT tOP_ASGN arg
         {
-      $$ = dispatch1(top_const_field, $2);
-      $$ = dispatch3(opassign, $$, $3, $4);
-      $$ = dispatch1(assign_error, $$);
+          reduce_rule(arg__tCOLON3__tCONSTANT__tOP_ASGN__arg, 4);
         }
     | backref tOP_ASGN arg
         {
-      $$ = dispatch1(var_field, $1);
-      $$ = dispatch3(opassign, $$, $2, $3);
-      $$ = dispatch1(assign_error, $$);
+          reduce_rule(arg__backref__tOP_ASGN__arg, 3);
         }
     | arg tDOT2 arg
         {
-      $$ = dispatch2(dot2, $1, $3);
+          reduce_rule(arg__arg__tDOT2__arg, 3);
         }
     | arg tDOT3 arg
         {
-      $$ = dispatch2(dot3, $1, $3);
+          reduce_rule(arg__arg__tDOT3__arg, 3);
         }
     | arg '+' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('+'), $3);
+          reduce_rule(arg__arg__PLUS__arg, 3);
         }
     | arg '-' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('-'), $3);
+          reduce_rule(arg__arg__MINUS__arg, 3);
         }
     | arg '*' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('*'), $3);
+          reduce_rule(arg__arg__TIMES__arg, 3);
         }
     | arg '/' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('/'), $3);
+          reduce_rule(arg__arg__DIVIDE__arg, 3);
         }
     | arg '%' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('%'), $3);
+          reduce_rule(arg__arg__DIVIDE__arg, 3);
         }
     | arg tPOW arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("**"), $3);
+          reduce_rule(arg__arg__tPOW__arg, 3);
         }
     | tUMINUS_NUM tINTEGER tPOW arg
         {
-      $$ = dispatch3(binary, $2, redtree_intern("**"), $4);
-      $$ = dispatch2(unary, redtree_intern("-@"), $$);
+          reduce_rule(arg__tUMINUS_NUM__tINTEGER__tPOW__arg, 4);
         }
     | tUMINUS_NUM tFLOAT tPOW arg
         {
-      $$ = dispatch3(binary, $2, redtree_intern("**"), $4);
-      $$ = dispatch2(unary, redtree_intern("-@"), $$);
+          reduce_rule(arg__tUMINUS_NUM__tFLOAT__tPOW__arg, 4);
         }
     | tUPLUS arg
         {
-      $$ = dispatch2(unary, redtree_intern("+@"), $2);
+          reduce_rule(arg__tUPLUS__arg, 2);
         }
     | tUMINUS arg
         {
-      $$ = dispatch2(unary, redtree_intern("-@"), $2);
+          reduce_rule(arg__tUMINUS__arg, 2);
         }
     | arg '|' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('|'), $3);
+          reduce_rule(arg__arg__OR__arg, 3);
         }
     | arg '^' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('^'), $3);
+          reduce_rule(arg__arg__CARET__arg, 3);
         }
     | arg '&' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('&'), $3);
+          reduce_rule(arg__arg__AND__arg, 3);
         }
     | arg tCMP arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("<=>"), $3);
+          reduce_rule(arg__arg__tCMP__arg, 3);
         }
     | arg '>' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('>'), $3);
+          reduce_rule(arg__arg__GT__arg, 3);
         }
     | arg tGEQ arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern(">="), $3);
+          reduce_rule(arg__arg__tGEQ__arg, 3);
         }
     | arg '<' arg
         {
-      $$ = dispatch3(binary, $1, ID2SYM('<'), $3);
+          reduce_rule(arg__arg__LT__arg, 3);
         }
     | arg tLEQ arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("<="), $3);
+          reduce_rule(arg__arg__tLEQ__arg, 3);
         }
     | arg tEQ arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("=="), $3);
+          reduce_rule(arg__arg__tEQ__arg, 3);
         }
     | arg tEQQ arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("==="), $3);
+          reduce_rule(arg__arg__tEQQ__arg, 3);
         }
     | arg tNEQ arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("!="), $3);
+          reduce_rule(arg__arg__tNEQ__arg, 3);
         }
     | arg tMATCH arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("=~"), $3);
+          reduce_rule(arg__arg__tMATCH__arg, 3);
         }
     | arg tNMATCH arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("!~"), $3);
+          reduce_rule(arg__arg__tNMATCH__arg, 3);
         }
     | '!' arg
         {
-      $$ = dispatch2(unary, ID2SYM('!'), $2);
+          reduce_rule(arg__BANG__arg, 2);
         }
     | '~' arg
         {
-      $$ = dispatch2(unary, ID2SYM('~'), $2);
+          reduce_rule(arg__TILDE__arg, 2);
         }
     | arg tLSHFT arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("<<"), $3);
+          reduce_rule(arg__arg__tLSHFT__arg, 3);
         }
     | arg tRSHFT arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern(">>"), $3);
+          reduce_rule(arg__arg__tRSHFT__arg, 3);
         }
     | arg tANDOP arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("&&"), $3);
+          reduce_rule(arg__arg__tANDOP__arg, 3);
         }
     | arg tOROP arg
         {
-      $$ = dispatch3(binary, $1, redtree_intern("||"), $3);
+          reduce_rule(arg__arg__tOROP__arg, 3);
         }
     | keyword_defined opt_nl {in_defined = 1;} arg
         {
-      in_defined = 0;
-      $$ = dispatch1(defined, $4);
+          in_defined = 0;
+          reduce_rule(arg__keyword_defined__opt_nl__arg, 3);
         }
     | arg '?' arg opt_nl ':' arg
         {
-      $$ = dispatch3(ifop, $1, $3, $6);
+          reduce_rule(arg__QMARK__arg__opt_nl__COLON__arg, 5);
         }
     | primary
         {
-      $$ = $1;
+          reduce_rule(arg__primary, 1);
         }
     ;
 
 arg_value : arg
         {
-      $$ = $1;
+          reduce_rule(arg_value__arg, 1);
+          $$ = $1;
         }
     ;
 
 aref_args : none
+        {
+          reduce_rule(aref_args__none, 1);
+        }
     | args trailer
         {
-      $$ = $1;
+          reduce_rule(aref_args__args__trailer, 2);
         }
     | args ',' assocs trailer
         {
-      $$ = arg_add_assocs($1, $3);
+          reduce_rule(aref_args__args__COMMA__assocs__trailer, 4);
         }
     | assocs trailer
         {
-      $$ = arg_add_assocs(arg_new(), $1);
+          reduce_rule(aref_args__assocs__trailer, 2);
         }
     ;
 
 paren_args  : '(' opt_call_args rparen
         {
-      $$ = dispatch1(arg_paren, escape_Qundef($2));
+          reduce_rule(paren_args__LR__opt_call_args__rparen, 3);
         }
     ;
 
 opt_paren_args  : none
+        {
+          reduce_rule(opt_paren_args__none, 1);
+        }
     | paren_args
+        {
+          reduce_rule(opt_paren_args__paren_args, 1);
+        }
     ;
 
 opt_call_args : none
+        {
+          reduce_rule(opt_call_args__none, 1);
+        }
     | call_args
+        {
+          reduce_rule(opt_call_args__call_args, 1);
+        }
     | args ','
         {
-          $$ = $1;
+          reduce_rule(opt_call_args__args__COMMA, 2);
         }
     | args ',' assocs ','
         {
-      $$ = arg_add_assocs($1, $3);
+          reduce_rule(opt_call_args__args__COMMA__assocs__COMMA, 4);
         }
     | assocs ','
         {
-      $$ = arg_add_assocs(arg_new(), $1);
+          reduce_rule(opt_call_args__assocs__COMMA, 2);
         }
     ;
 
 call_args : command
         {
-      $$ = arg_add(arg_new(), $1);
+          reduce_rule(call_args__command, 1);
         }
     | args opt_block_arg
         {
-      $$ = arg_add_optblock($1, $2);
+          reduce_rule(call_args__args__opt_block_arg, 2);
         }
     | assocs opt_block_arg
         {
-      $$ = arg_add_assocs(arg_new(), $1);
-      $$ = arg_add_optblock($$, $2);
+          reduce_rule(call_args__assocs__opt_block_arg, 2);
         }
     | args ',' assocs opt_block_arg
         {
-      $$ = arg_add_optblock(arg_add_assocs($1, $3), $4);
+          reduce_rule(call_args__args__COMMA__assocs__opt_block_arg, 4);
         }
     | block_arg
-/*
-*/
         {
-      $$ = arg_add_block(arg_new(), $1);
+          reduce_rule(call_args__block_arg, 1);
         }
 
     ;
 
 command_args  :  {
-      $<val>$ = cmdarg_stack;
-      CMDARG_PUSH(1);
+          $<val>$ = cmdarg_stack;
+          CMDARG_PUSH(1);
         }
-      call_args
+          call_args
         {
-      /* CMDARG_POP() */
-      cmdarg_stack = $<val>1;
-      $$ = $2;
+          /* CMDARG_POP() */
+          cmdarg_stack = $<val>1;
+          reduce_rule(command_args__call_args, 1);
         }
     ;
 
 block_arg : tAMPER arg_value
         {
-      $$ = $2;
+          reduce_rule(block_arg__tAMPER__arg_value, 2);
         }
     ;
 
 opt_block_arg : ',' block_arg
         {
-      $$ = $2;
+          reduce_rule(opt_block_arg__COMMA__block_arg, 2);
         }
     | none
         {
-      $$ = 0;
+          reduce_rule(opt_block_arg__none, 1);
         }
     ;
 
 args    : arg_value
         {
-      $$ = arg_add(arg_new(), $1);
+          reduce_rule(args__arg_value, 1);
         }
     | tSTAR arg_value
         {
-      $$ = arg_add_star(arg_new(), $2);
+          reduce_rule(args__tSTAR__arg_value, 2);
         }
     | args ',' arg_value
         {
-      $$ = arg_add($1, $3);
+          reduce_rule(args__args__COMMA__arg_value, 3);
         }
     | args ',' tSTAR arg_value
         {
-      $$ = arg_add_star($1, $4);
+          reduce_rule(args__args__COMMA__tSTAR__arg_value, 4);
         }
     ;
 
 mrhs    : args ',' arg_value
         {
-      $$ = mrhs_add(args2mrhs($1), $3);
+          reduce_rule(mrhs__args__COMMA__arg_value, 3);
         }
     | args ',' tSTAR arg_value
         {
-      $$ = mrhs_add_star(args2mrhs($1), $4);
+          reduce_rule(mrhs__args__COMMA__tSTAR__arg_value, 4);
         }
     | tSTAR arg_value
         {
-      $$ = mrhs_add_star(mrhs_new(), $2);
+          reduce_rule(mrhs__tSTAR__arg_value, 2);
         }
     ;
 
 primary   : literal
+        {
+          reduce_rule(primary__literal, 1);
+        }
     | strings
+        {
+          reduce_rule(primary__strings, 1);
+        }
     | xstring
+        {
+          reduce_rule(primary__xstring, 1);
+        }
     | regexp
+        {
+          reduce_rule(primary__regexp, 1);
+        }
     | words
+        {
+          reduce_rule(primary__words, 1);
+        }
     | qwords
+        {
+          reduce_rule(primary__qwords, 1);
+        }
     | var_ref
+        {
+          reduce_rule(primary__var_ref, 1);
+        }
     | backref
+        {
+          reduce_rule(primary__backref, 1);
+        }
     | tFID
         {
-      $$ = method_arg(dispatch1(fcall, $1), arg_new());
+          reduce_rule(primary__tFID, 1);
         }
     | k_begin
         {
-        }
-      bodystmt
-      k_end
-        {
-      $$ = dispatch1(begin, $3);
+          reduce_rule(primary__k_begin, 1);
         }
     | tLPAREN_ARG expr {lex_state = EXPR_ENDARG;} rparen
         {
-      rb_warning0("(...) interpreted as grouped expression");
-      $$ = dispatch1(paren, $2);
+          rb_warning0("(...) interpreted as grouped expression");
+          reduce_rule(primary__tLPAREN_ARG__expr__rparen, 3);
         }
     | tLPAREN compstmt ')'
         {
-      $$ = dispatch1(paren, $2);
+          reduce_rule(primary__tLPAREN__compstmt__RR, 3);
         }
     | primary_value tCOLON2 tCONSTANT
         {
-      $$ = dispatch2(const_path_ref, $1, $3);
+          reduce_rule(primary__primary_value__tCOLON2__tCONSTANT, 3);
         }
     | tCOLON3 tCONSTANT
         {
-      $$ = dispatch1(top_const_ref, $2);
+          reduce_rule(primary__tCOLON3__tCONSTANT, 2);
         }
     | tLBRACK aref_args ']'
         {
-      $$ = dispatch1(array, escape_Qundef($2));
+          reduce_rule(primary__tLBRACK__aref_args__RS, 3);
         }
     | tLBRACE assoc_list '}'
         {
-      $$ = dispatch1(hash, escape_Qundef($2));
+          reduce_rule(primary__tLBRACE__assoc_list__RC, 3);
         }
     | keyword_return
         {
-      $$ = dispatch0(return0);
+          reduce_rule(primary__keyword_return, 1);
         }
     | keyword_yield '(' call_args rparen
         {
-      $$ = dispatch1(yield, dispatch1(paren, $3));
+          reduce_rule(primary__keyword_yield__LR__call_args__rparen, 4);
         }
     | keyword_yield '(' rparen
         {
-      $$ = dispatch1(yield, dispatch1(paren, arg_new()));
+          reduce_rule(primary__keyword_yield__LR__rparen, 3);
         }
     | keyword_yield
         {
-      $$ = dispatch0(yield0);
+          reduce_rule(primary__keyword_yield, 1);
         }
     | keyword_defined opt_nl '(' {in_defined = 1;} expr rparen
         {
-      in_defined = 0;
-      $$ = dispatch1(defined, $5);
+          in_defined = 0;
+          reduce_rule(primary__keyword_defined__opt_nl__LR__expr__rparen, 5);
         }
     | keyword_not '(' expr rparen
         {
-      $$ = dispatch2(unary, redtree_intern("not"), $3);
+          reduce_rule(primary__keyword_not__LR__expr__rparen, 4);
         }
     | keyword_not '(' rparen
         {
-      $$ = dispatch2(unary, redtree_intern("not"), Qnil);
+          reduce_rule(primary__keyword_not__LR__rparen, 3);
         }
     | operation brace_block
         {
-      $$ = method_arg(dispatch1(fcall, $1), arg_new());
-      $$ = method_add_block($$, $2);
+          reduce_rule(primary__operation__brace_block, 2);
         }
     | method_call
+        {
+          reduce_rule(primary__method_call, 1);
+        }
     | method_call brace_block
         {
-      $$ = method_add_block($1, $2);
+          reduce_rule(primary__method_call__brace_block, 2);
         }
     | tLAMBDA lambda
         {
-      $$ = $2;
+          reduce_rule(primary__tLAMBDA__lambda, 2);
         }
-    | k_if expr_value then
-      compstmt
-      if_tail
-      k_end
+    | k_if expr_value then compstmt if_tail k_end
         {
-      $$ = dispatch3(if, $2, $4, escape_Qundef($5));
+          reduce_rule(primary__k_if__expr_value__then__compstmt__if_tail__k_end, 6);
         }
-    | k_unless expr_value then
-      compstmt
-      opt_else
-      k_end
+    | k_unless expr_value then compstmt opt_else k_end
         {
-      $$ = dispatch3(unless, $2, $4, escape_Qundef($5));
+          reduce_rule(primary__k_unless__expr_value__then__compstmt__opt_else__k_end, 6);
         }
-    | k_while {COND_PUSH(1);} expr_value do {COND_POP();}
-      compstmt
-      k_end
+    | k_while {COND_PUSH(1);} expr_value do {COND_POP();} compstmt k_end
         {
-      $$ = dispatch2(while, $3, $6);
+          reduce_rule(primary__k_while__expr_value__do__compstmt__k_end, 5);
         }
-    | k_until {COND_PUSH(1);} expr_value do {COND_POP();}
-      compstmt
-      k_end
+    | k_until {COND_PUSH(1);} expr_value do {COND_POP();} compstmt k_end
         {
-      $$ = dispatch2(until, $3, $6);
+          reduce_rule(primary__k_until__expr_value__do__compstmt__k_end, 5);
         }
-    | k_case expr_value opt_terms
-      case_body
-      k_end
+    | k_case expr_value opt_terms case_body k_end
         {
-      $$ = dispatch2(case, $2, $4);
+          reduce_rule(primary__k_case__expr_value__opt_terms__case_body__k_end, 5);
         }
     | k_case opt_terms case_body k_end
         {
-      $$ = dispatch2(case, Qnil, $3);
+          reduce_rule(primary__k_case__opt_terms__case_body__k_end, 4);
         }
     | k_for for_var keyword_in
-      {COND_PUSH(1);}
-      expr_value do
-      {COND_POP();}
-      compstmt
-      k_end
+          {COND_PUSH(1);}
+          expr_value do
+          {COND_POP();}
+          compstmt
+          k_end
         {
-      $$ = dispatch3(for, $2, $5, $8);
+          reduce_rule(primary__k_for__for_var__keyword_in__expr_value__do__compstmt__k_end, 7);
         }
     | k_class cpath superclass
         {
-      if (in_def || in_single)
+          if (in_def || in_single)
           yyerror("class definition in method body");
-      local_push(0);
+          local_push(0);
         }
-      bodystmt
-      k_end
+          bodystmt
+          k_end
         {
-      $$ = dispatch3(class, $2, $3, $5);
+          reduce_rule(primary__k_class__cpath__superclass__bodystmt__k_end, 5);
 
-      local_pop();
+          local_pop();
         }
     | k_class tLSHFT expr
         {
-      $<num>$ = in_def;
-      in_def = 0;
+          $<num>$ = in_def;
+          in_def = 0;
         }
-      term
+          term
         {
-      $<num>$ = in_single;
-      in_single = 0;
-      local_push(0);
+          $<num>$ = in_single;
+          in_single = 0;
+          local_push(0);
         }
-      bodystmt
-      k_end
+          bodystmt
+          k_end
         {
-      $$ = dispatch2(sclass, $3, $7);
+          reduce_rule(primary__k_class__tLSHFT__expr__term__bodystmt__k_end, 6);
 
-      local_pop();
-      in_def = $<num>4;
-      in_single = $<num>6;
+          local_pop();
+          in_def = $<num>4;
+          in_single = $<num>6;
         }
     | k_module cpath
         {
-      if (in_def || in_single)
+          if (in_def || in_single)
           yyerror("module definition in method body");
-      local_push(0);
+          local_push(0);
         }
-      bodystmt
-      k_end
+          bodystmt
+          k_end
         {
-      $$ = dispatch2(module, $2, $4);
+          reduce_rule(primary__k_module__cpath__bodystmt__k_end, 4);
 
-      local_pop();
+          local_pop();
         }
     | k_def fname
         {
-      $<id>$ = cur_mid;
-      cur_mid = $2;
-      in_def++;
-      local_push(0);
+          $<id>$ = cur_mid;
+          cur_mid = $2;
+          in_def++;
+          local_push(0);
         }
-      f_arglist
-      bodystmt
-      k_end
+          f_arglist
+          bodystmt
+          k_end
         {
-      $$ = dispatch3(def, $2, $4, $5);
+          reduce_rule(primary__k_def__fname__f_arglist__bodystmt__k_end, 5);
 
-      local_pop();
-      in_def--;
-      cur_mid = $<id>3;
+          local_pop();
+          in_def--;
+          cur_mid = $<id>3;
         }
     | k_def singleton dot_or_colon {lex_state = EXPR_FNAME;} fname
         {
-      in_single++;
-      lex_state = EXPR_ENDFN; /* force for args */
-      local_push(0);
+          in_single++;
+          lex_state = EXPR_ENDFN; /* force for args */
+          local_push(0);
         }
-      f_arglist
-      bodystmt
-      k_end
+          f_arglist
+          bodystmt
+          k_end
         {
-      $$ = dispatch5(defs, $2, $3, $5, $7, $8);
+          reduce_rule(primary__k_def__singleton__dot_or_colon__fname__f_arglist__bodystmt__k_end, 7);
 
-      local_pop();
-      in_single--;
+          local_pop();
+          in_single--;
         }
     | keyword_break
         {
-      $$ = dispatch1(break, arg_new());
+          reduce_rule(primary__keyword_break, 1);
         }
     | keyword_next
         {
-      $$ = dispatch1(next, arg_new());
+          reduce_rule(primary__keyword_next, 1);
         }
     | keyword_redo
         {
-      $$ = dispatch0(redo);
+          reduce_rule(primary__keyword_redo, 1);
         }
     | keyword_retry
         {
-      $$ = dispatch0(retry);
+          reduce_rule(primary__keyword_retry, 1);
         }
     ;
 
 primary_value : primary
         {
-      $$ = $1;
+          reduce_rule(primary_value__primary, 1);
         }
     ;
 
 k_begin   : keyword_begin
         {
-      token_info_push("begin");
+          token_info_push("begin");
+          reduce_rule(k_begin__keyword_begin, 1);
         }
     ;
 
 k_if    : keyword_if
         {
-      token_info_push("if");
+          token_info_push("if");
+          reduce_rule(k_if__keyword_if, 1);
         }
     ;
 
 k_unless  : keyword_unless
         {
-      token_info_push("unless");
+          reduce_rule(k_unless__keyword_unless, 1);
         }
     ;
 
 k_while   : keyword_while
         {
-      token_info_push("while");
+          reduce_rule(k_while__keyword_while, 1);
         }
     ;
 
 k_until   : keyword_until
         {
-      token_info_push("until");
+          reduce_rule(k_until__keyword_until, 1);
         }
     ;
 
 k_case    : keyword_case
         {
-      token_info_push("case");
+          reduce_rule(k_case__keyword_case, 1);
         }
     ;
 
 k_for   : keyword_for
         {
-      token_info_push("for");
+          reduce_rule(k_for__keyword_for, 1);
         }
     ;
 
 k_class   : keyword_class
         {
-      token_info_push("class");
+          reduce_rule(k_class__keyword_class, 1);
         }
     ;
 
 k_module  : keyword_module
         {
-      token_info_push("module");
+          reduce_rule(k_module__keyword_module, 1);
         }
     ;
 
 k_def   : keyword_def
         {
-      token_info_push("def");
+          reduce_rule(k_def__keyword_def, 1);
         }
     ;
 
 k_end   : keyword_end
         {
-      token_info_pop("end");
+          reduce_rule(k_end__keyword_end, 1);
         }
     ;
 
 then    : term
-/*
-*/
-        { $$ = Qnil; }
-
+        {
+          reduce_rule(then__term, 1);
+        }
     | keyword_then
+        {
+          reduce_rule(then__keyword_then, 1);
+        }
     | term keyword_then
-/*
-*/
-        { $$ = $2; }
-
+        {
+          reduce_rule(then__term__keyword_then, 2);
+        }
     ;
 
 do    : term
-/*
-*/
-        { $$ = Qnil; }
-
+        {
+          reduce_rule(do__term, 1);
+        }
     | keyword_do_cond
+        {
+          reduce_rule(do__keyword_do_cond, 1);
+        }
     ;
 
-if_tail   : opt_else
-    | keyword_elsif expr_value then
-      compstmt
-      if_tail
+if_tail : opt_else
         {
-      $$ = dispatch3(elsif, $2, $4, escape_Qundef($5));
+          reduce_rule(if_tail__opt_else, 1);
+        }
+    | keyword_elsif expr_value then compstmt if_tail
+        {
+          reduce_rule(if_tail__keyword_elsif__expr_value__then__compstmt__if_tail, 5);
         }
     ;
 
 opt_else  : none
+        {
+          reduce_rule(opt_else__none, 1);
+        }
     | keyword_else compstmt
         {
-      $$ = dispatch1(else, $2);
+          reduce_rule(opt_else__keyword_else__compstmt, 2);
         }
     ;
 
 for_var   : lhs
+        {
+          reduce_rule(for_var__lhs, 1);
+        }
     | mlhs
+        {
+          reduce_rule(for_var__mlhs, 1);
+        }
     ;
 
 f_marg    : f_norm_arg
         {
-      $$ = assignable($1, 0);
-      $$ = dispatch1(mlhs_paren, $$);
+          assignable($1, 0);
+          reduce_rule(f_marg__f_norm_arg, 1);
         }
     | tLPAREN f_margs rparen
         {
-      $$ = dispatch1(mlhs_paren, $2);
+          reduce_rule(f_marg__tLPAREN__f_margs__rparen, 3);
         }
     ;
 
 f_marg_list : f_marg
         {
-      $$ = mlhs_add(mlhs_new(), $1);
+          reduce_rule(f_marg_list__f_marg, 1);
         }
     | f_marg_list ',' f_marg
         {
-      $$ = mlhs_add($1, $3);
+          reduce_rule(f_marg_list__f_marg_list__COMMA__f_marg, 3);
         }
     ;
 
 f_margs   : f_marg_list
         {
-      $$ = $1;
+          reduce_rule(f_margs__f_marg_list, 1);
         }
     | f_marg_list ',' tSTAR f_norm_arg
         {
-      $$ = assignable($4, 0);
-      $$ = mlhs_add_star($1, $$);
+          assignable($4, 0);
+          reduce_rule(f_margs__f_marg_list__COMMA__tSTAR__f_norm_arg, 4);
         }
     | f_marg_list ',' tSTAR f_norm_arg ',' f_marg_list
         {
-      $$ = assignable($4, 0);
-      $$ = mlhs_add_star($1, $$);
+          assignable($4, 0);
+          reduce_rule(f_margs__f_marg_list__COMMA__tSTAR__f_norm_arg__COMMA__f_marg_list, 6);
         }
     | f_marg_list ',' tSTAR
         {
-      $$ = mlhs_add_star($1, Qnil);
+          reduce_rule(f_margs__f_marg_list__COMMA__tSTAR, 3);
         }
     | f_marg_list ',' tSTAR ',' f_marg_list
         {
-      $$ = mlhs_add_star($1, $5);
+          reduce_rule(f_margs__f_marg_list__COMMA__tSTAR__COMMA__f_marg_list, 5);
         }
     | tSTAR f_norm_arg
         {
-      $$ = assignable($2, 0);
-      $$ = mlhs_add_star(mlhs_new(), $$);
+          assignable($2, 0);
+          reduce_rule(f_margs__tSTAR__f_norm_arg, 2);
         }
     | tSTAR f_norm_arg ',' f_marg_list
         {
-      $$ = assignable($2, 0);
-                $$ = mlhs_add_star($$, $4);
+          assignable($2, 0);
+          reduce_rule(f_margs__tSTAR__f_norm_arg__COMMA__f_marg_list, 4);
         }
     | tSTAR
         {
-      $$ = mlhs_add_star(mlhs_new(), Qnil);
+          reduce_rule(f_margs__tSTAR, 1);
         }
     | tSTAR ',' f_marg_list
         {
-      $$ = mlhs_add_star(mlhs_new(), Qnil);
+          reduce_rule(f_margs__tSTAR__COMMA__f_marg_list, 3);
         }
     ;
 
 block_param : f_arg ',' f_block_optarg ',' f_rest_arg opt_f_block_arg
         {
-      $$ = params_new($1, $3, $5, Qnil, escape_Qundef($6));
+          reduce_rule(block_param__f_arg__COMMA__f_block_optarg__COMMA__f_rest_arg__opt_f_block_arg, 6);
         }
     | f_arg ',' f_block_optarg ',' f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new($1, $3, $5, $7, escape_Qundef($8));
+          reduce_rule(block_param__f_arg__COMMA__f_block_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 8);
         }
     | f_arg ',' f_block_optarg opt_f_block_arg
         {
-      $$ = params_new($1, $3, Qnil, Qnil, escape_Qundef($4));
+          reduce_rule(block_param__f_arg__COMMA__f_block_optarg__opt_f_block_arg, 4);
         }
     | f_arg ',' f_block_optarg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new($1, $3, Qnil, $5, escape_Qundef($6));
+          reduce_rule(block_param__f_arg__COMMA__f_block_optarg__COMMA__f_arg__opt_f_block_arg, 6);
         }
     | f_arg ',' f_rest_arg opt_f_block_arg
         {
-      $$ = params_new($1, Qnil, $3, Qnil, escape_Qundef($4));
+          reduce_rule(block_param__f_arg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         }
     | f_arg ','
         {
-      $$ = params_new($1, Qnil, Qnil, Qnil, Qnil);
-                        dispatch1(excessed_comma, $$);
+          reduce_rule(block_param__f_arg__COMMA, 2);
         }
     | f_arg ',' f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new($1, Qnil, $3, $5, escape_Qundef($6));
+          reduce_rule(block_param__f_arg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         }
     | f_arg opt_f_block_arg
         {
-      $$ = params_new($1, Qnil,Qnil, Qnil, escape_Qundef($2));
+          reduce_rule(block_param__f_arg__opt_f_block_arg, 2);
         }
     | f_block_optarg ',' f_rest_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, $3, Qnil, escape_Qundef($4));
+          reduce_rule(block_param__f_block_optarg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         }
     | f_block_optarg ',' f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, $3, $5, escape_Qundef($6));
+          reduce_rule(block_param__f_block_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         }
     | f_block_optarg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, Qnil, Qnil,escape_Qundef($2));
+          reduce_rule(block_param__f_block_optarg__opt_f_block_arg, 2);
         }
     | f_block_optarg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, Qnil, $3, escape_Qundef($4));
+          reduce_rule(block_param__f_block_optarg__COMMA__f_arg__opt_f_block_arg, 4);
         }
     | f_rest_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, Qnil, $1, Qnil, escape_Qundef($2));
+          reduce_rule(block_param__f_rest_arg__opt_f_block_arg, 2);
         }
     | f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, Qnil, $1, $3, escape_Qundef($4));
+          reduce_rule(block_param__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 4);
         }
     | f_block_arg
         {
-      $$ = params_new(Qnil, Qnil, Qnil, Qnil, $1);
+          reduce_rule(block_param__f_block_arg, 1);
         }
     ;
 
 opt_block_param : none
+        {
+          reduce_rule(opt_block_param__none, 1);
+        }
     | block_param_def
         {
-      command_start = TRUE;
+          command_start = TRUE;
+          reduce_rule(opt_block_param__block_param_def, 1);
         }
     ;
 
 block_param_def : '|' opt_bv_decl '|'
         {
-      $$ = blockvar_new(params_new(Qnil,Qnil,Qnil,Qnil,Qnil),
-                                          escape_Qundef($2));
+          reduce_rule(block_param_def__OR__opt_bv_decl__OR, 3);
         }
     | tOROP
         {
-      $$ = blockvar_new(params_new(Qnil,Qnil,Qnil,Qnil,Qnil),
-                                          Qnil);
+          reduce_rule(block_param_def__tOROP, 1);
         }
     | '|' block_param opt_bv_decl '|'
         {
-      $$ = blockvar_new(escape_Qundef($2), escape_Qundef($3));
+          reduce_rule(block_param_def__OR__block_param__opt_bv_decl__OR, 4);
         }
     ;
 
 
 opt_bv_decl : none
+        {
+          reduce_rule(opt_bv_decl__none, 1);
+        }
     | ';' bv_decls
         {
-      $$ = $2;
+          reduce_rule(opt_bv_decl__SEMI__bv_decls, 2);
         }
     ;
 
 bv_decls  : bvar
-/*
-*/
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(bv_decls__bvar, 1);
         }
-
     | bv_decls ',' bvar
-/*
-*/
         {
-      rb_ary_push($$, $3);
+          reduce_rule(bv_decls__bv_decls__COMMA__bvar, 3);
         }
 
     ;
 
 bvar    : tIDENTIFIER
         {
-      new_bv(get_id($1));
-      $$ = get_value($1);
+          new_bv(get_id($1));
+          get_value($1);
+          reduce_rule(bvar__tIDENTIFIER, 1);
         }
     | f_bad_arg
         {
-      $$ = 0;
+          reduce_rule(bvar__f_bad_arg, 1);
         }
     ;
 
 lambda    :   {
-      $<vars>$ = dyna_push();
+          $<vars>$ = dyna_push();
         }
         {
-      $<num>$ = lpar_beg;
-      lpar_beg = ++paren_nest;
+          $<num>$ = lpar_beg;
+          lpar_beg = ++paren_nest;
         }
-      f_larglist
-      lambda_body
+          f_larglist
+          lambda_body
         {
-      lpar_beg = $<num>2;
-      $$ = dispatch2(lambda, $3, $4);
+          lpar_beg = $<num>2;
+          reduce_rule(lambda__f_larglist__lambda_body, 2);
 
-      dyna_pop($<vars>1);
+          dyna_pop($<vars>1);
         }
     ;
 
 f_larglist  : '(' f_args opt_bv_decl rparen
         {
-      $$ = dispatch1(paren, $2);
+          reduce_rule(f_larglist__LR__f_args__opt_bv_decl__rparen, 4);
         }
     | f_args
         {
-      $$ = $1;
+          reduce_rule(f_larglist__f_args, 1);
         }
     ;
 
 lambda_body : tLAMBEG compstmt '}'
         {
-      $$ = $2;
+          reduce_rule(lambda_body__tLAMBEG__compstmt__RC, 3);
         }
     | keyword_do_LAMBDA compstmt keyword_end
         {
-      $$ = $2;
+          reduce_rule(lambda_body__keyword_do_LAMBDA__compstmt__keyword_end, 3);
         }
     ;
 
 do_block  : keyword_do_block
         {
-      $<vars>1 = dyna_push();
+          $<vars>1 = dyna_push();
         }
-      opt_block_param
-      compstmt
-      keyword_end
+          opt_block_param
+          compstmt
+          keyword_end
         {
-      $$ = dispatch2(do_block, escape_Qundef($3), $4);
+          reduce_rule(do_block__keyword_do_block__opt_block_param__compstmt__keyword_end, 4);
 
-      dyna_pop($<vars>1);
+          dyna_pop($<vars>1);
         }
     ;
 
 block_call  : command do_block
         {
-      $$ = method_add_block($1, $2);
+          reduce_rule(block_call__command__do_block, 2);
         }
     | block_call '.' operation2 opt_paren_args
         {
-      $$ = dispatch3(call, $1, redtree_id2sym('.'), $3);
-      $$ = method_optarg($$, $4);
+          reduce_rule(block_call__block_call__DOT__operation2__opt_paren_args, 4);
         }
     | block_call tCOLON2 operation2 opt_paren_args
         {
-      $$ = dispatch3(call, $1, redtree_intern("::"), $3);
-      $$ = method_optarg($$, $4);
+          reduce_rule(block_call__block_call__tCOLON2__operation2__opt_paren_args, 4);
         }
     ;
 
 method_call : operation paren_args
         {
-      $$ = method_arg(dispatch1(fcall, $1), $2);
+          reduce_rule(method_call__operation__paren_args, 2);
         }
     | primary_value '.' operation2 opt_paren_args
         {
-      $$ = dispatch3(call, $1, redtree_id2sym('.'), $3);
-      $$ = method_optarg($$, $4);
+          reduce_rule(method_call__primary_value__DOT__operation2__opt_paren_args, 4);
         }
     | primary_value tCOLON2 operation2 paren_args
         {
-      $$ = dispatch3(call, $1, redtree_id2sym('.'), $3);
-      $$ = method_optarg($$, $4);
+          reduce_rule(method_call__primary_value__tCOLON2__operation2__paren_args, 4);
         }
     | primary_value tCOLON2 operation3
         {
-      $$ = dispatch3(call, $1, redtree_intern("::"), $3);
+          reduce_rule(method_call__primary_value__tCOLON2__operation3, 3);
         }
     | primary_value '.' paren_args
         {
-      $$ = dispatch3(call, $1, redtree_id2sym('.'),
-               redtree_intern("call"));
-      $$ = method_optarg($$, $3);
+          reduce_rule(method_call__primary_value__DOT__paren_args, 3);
         }
     | primary_value tCOLON2 paren_args
         {
-      $$ = dispatch3(call, $1, redtree_intern("::"),
-               redtree_intern("call"));
-      $$ = method_optarg($$, $3);
+          reduce_rule(method_call__primary_value__tCOLON2__paren_args, 3);
         }
     | keyword_super paren_args
         {
-      $$ = dispatch1(super, $2);
+          reduce_rule(method_call__keyword_super__paren_args, 2);
         }
     | keyword_super
         {
-      $$ = dispatch0(zsuper);
+          reduce_rule(method_call__keyword_super, 1);
         }
     | primary_value '[' opt_call_args rbracket
         {
-      $$ = dispatch2(aref, $1, escape_Qundef($3));
+          reduce_rule(method_call__primary_value__LS__opt_call_args__rbracket, 4);
         }
     ;
 
 brace_block : '{'
         {
-      $<vars>1 = dyna_push();
+          $<vars>1 = dyna_push();
         }
-      opt_block_param
-      compstmt '}'
+          opt_block_param
+          compstmt '}'
         {
-      $$ = dispatch2(brace_block, escape_Qundef($3), $4);
+          reduce_rule(brace_block__LC__opt_block_param__compstmt__RC, 4);
 
-      dyna_pop($<vars>1);
+          dyna_pop($<vars>1);
         }
     | keyword_do
         {
-      $<vars>1 = dyna_push();
+          $<vars>1 = dyna_push();
         }
-      opt_block_param
-      compstmt keyword_end
+          opt_block_param
+          compstmt keyword_end
         {
-      $$ = dispatch2(do_block, escape_Qundef($3), $4);
+          reduce_rule(brace_block__keyword_do__opt_block_param__compstmt__keyword_end, 4);
 
-      dyna_pop($<vars>1);
+          dyna_pop($<vars>1);
         }
     ;
 
-case_body : keyword_when args then
-      compstmt
-      cases
+case_body : keyword_when args then compstmt cases
         {
-      $$ = dispatch3(when, $2, $4, escape_Qundef($5));
+          reduce_rule(case_body__keyword_when__args__then__compstmt__cases, 5);
         }
     ;
 
 cases   : opt_else
+        {
+          reduce_rule(cases__opt_else, 1);
+        }
     | case_body
+        {
+          reduce_rule(cases__case_body, 1);
+        }
     ;
 
-opt_rescue  : keyword_rescue exc_list exc_var then
-      compstmt
-      opt_rescue
+opt_rescue  : keyword_rescue exc_list exc_var then compstmt opt_rescue
         {
-      $$ = dispatch4(rescue,
-               escape_Qundef($2),
-               escape_Qundef($3),
-               escape_Qundef($5),
-               escape_Qundef($6));
+          reduce_rule(opt_rescue__keyword_rescue__exc_list__exc_var__then__compstmt__opt_rescue, 6);
         }
     | none
+        {
+          reduce_rule(opt_rescue__none, 1);
+        }
     ;
 
 exc_list  : arg_value
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(exc_list__arg_value, 1);
         }
     | mrhs
         {
-      $$ = $1;
+          reduce_rule(exc_list__mrhs, 1);
         }
     | none
+        {
+          reduce_rule(exc_list__none, 1);
+        }
     ;
 
 exc_var   : tASSOC lhs
         {
-      $$ = $2;
+          reduce_rule(exc_var__tASSOC__lhs, 2);
         }
     | none
+        {
+          reduce_rule(exc_var__none, 1);
+        }
     ;
 
 opt_ensure  : keyword_ensure compstmt
         {
-      $$ = dispatch1(ensure, $2);
+          reduce_rule(opt_ensure__keyword_ensure__compstmt, 2);
         }
     | none
+        {
+          reduce_rule(opt_ensure__none, 1);
+        }
     ;
 
 literal   : numeric
+        {
+          reduce_rule(literal__numeric, 1);
+        }
     | symbol
         {
-      $$ = dispatch1(symbol_literal, $1);
+          reduce_rule(literal__symbol, 1);
         }
     | dsym
+        {
+          reduce_rule(literal__dsym, 1);
+        }
     ;
 
 strings   : string
         {
-      $$ = $1;
+          reduce_rule(strings__string, 1);
         }
     ;
 
 string    : tCHAR
+        {
+          reduce_rule(string__tCHAR, 1);
+        }
     | string1
+        {
+          reduce_rule(string__string1, 1);
+        }
     | string string1
         {
-      $$ = dispatch2(string_concat, $1, $2);
+          reduce_rule(string__string__string1, 2);
         }
     ;
 
 string1   : tSTRING_BEG string_contents tSTRING_END
         {
-      $$ = dispatch1(string_literal, $2);
+          reduce_rule(string1__tSTRING_BEG__string_contents__tSTRING_END, 3);
         }
     ;
 
 xstring   : tXSTRING_BEG xstring_contents tSTRING_END
         {
-      $$ = dispatch1(xstring_literal, $2);
+          reduce_rule(xstring__tXSTRING_BEG__xstring_contents__tSTRING_END, 3);
         }
     ;
 
 regexp    : tREGEXP_BEG regexp_contents tREGEXP_END
         {
-      $$ = dispatch2(regexp_literal, $2, $3);
+          reduce_rule(regexp__tREGEXP_BEG__regexp_contents__tREGEXP_END, 3);
         }
     ;
 
 words   : tWORDS_BEG ' ' tSTRING_END
         {
-      $$ = dispatch0(words_new);
-      $$ = dispatch1(array, $$);
+          reduce_rule(words__tWORDS_BEG__SP__tSTRING_END, 3);
         }
     | tWORDS_BEG word_list tSTRING_END
         {
-      $$ = dispatch1(array, $2);
+          reduce_rule(words__tWORDS_BEG__word_list__tSTRING_END, 3);
         }
     ;
 
-word_list : /* none */
+word_list : 
         {
-      $$ = dispatch0(words_new);
+          reduce_rule(word_list__, 0);
         }
     | word_list word ' '
         {
-      $$ = dispatch2(words_add, $1, $2);
+          reduce_rule(word_list__word_list__word__SP, 3);
         }
     ;
 
 word    : string_content
-/*
-*/
         {
-      $$ = dispatch0(word_new);
-      $$ = dispatch2(word_add, $$, $1);
+          reduce_rule(word__string_content, 1);
         }
-
     | word string_content
         {
-      $$ = dispatch2(word_add, $1, $2);
+          reduce_rule(word__word__string_content, 2);
         }
     ;
 
-qwords    : tQWORDS_BEG ' ' tSTRING_END
+qwords  : tQWORDS_BEG ' ' tSTRING_END
         {
-      $$ = dispatch0(qwords_new);
-      $$ = dispatch1(array, $$);
+          reduce_rule(qwords__tQWORDS_BEG__SP__tSTRING_END, 3);
         }
     | tQWORDS_BEG qword_list tSTRING_END
         {
-      $$ = dispatch1(array, $2);
+          reduce_rule(qwords__tQWORDS_BEG__qword_list__tSTRING_END, 3);
         }
     ;
 
-qword_list  : /* none */
+qword_list  :
         {
-      $$ = dispatch0(qwords_new);
+          reduce_rule(qword_list__, 0);
         }
     | qword_list tSTRING_CONTENT ' '
         {
-      $$ = dispatch2(qwords_add, $1, $2);
+          reduce_rule(qword_list__qword_list__tSTRING_CONTENT__SP, 3);
         }
     ;
 
-string_contents : /* none */
+string_contents :
         {
-      $$ = dispatch0(string_content);
+          reduce_rule(string_contents__, 0);
         }
     | string_contents string_content
         {
-      $$ = dispatch2(string_add, $1, $2);
+          reduce_rule(string_contents__string_contents__string_content, 2);
         }
     ;
 
-xstring_contents: /* none */
+xstring_contents:
         {
-      $$ = dispatch0(xstring_new);
+          reduce_rule(xstring_contents__, 0);
         }
     | xstring_contents string_content
         {
-      $$ = dispatch2(xstring_add, $1, $2);
+          reduce_rule(xstring_contents__xstring_contents__string_content, 2);
         }
     ;
 
-regexp_contents: /* none */
+regexp_contents:
         {
-      $$ = dispatch0(regexp_new);
+          reduce_rule(regexp_contents__, 0);
         }
     | regexp_contents string_content
         {
-      $$ = dispatch2(regexp_add, $1, $2);
+          reduce_rule(regexp_contents__regexp_contents__string_content, 2);
         }
     ;
 
 string_content  : tSTRING_CONTENT
+        {
+          reduce_rule(string_content__tSTRING_CONTENT, 1);
+        }
     | tSTRING_DVAR
         {
-      $<node>$ = lex_strterm;
-      lex_strterm = 0;
-      lex_state = EXPR_BEG;
+          $<node>$ = lex_strterm;
+          lex_strterm = 0;
+          lex_state = EXPR_BEG;
         }
-      string_dvar
+          string_dvar
         {
-      lex_strterm = $<node>2;
-      $$ = dispatch1(string_dvar, $3);
+          lex_strterm = $<node>2;
+          reduce_rule(string_content__tSTRING_DVAR__string_dvar, 2);
         }
     | tSTRING_DBEG
         {
-      $<val>1 = cond_stack;
-      $<val>$ = cmdarg_stack;
-      cond_stack = 0;
-      cmdarg_stack = 0;
+          $<val>1 = cond_stack;
+          $<val>$ = cmdarg_stack;
+          cond_stack = 0;
+          cmdarg_stack = 0;
         }
         {
-      $<node>$ = lex_strterm;
-      lex_strterm = 0;
-      lex_state = EXPR_BEG;
+          $<node>$ = lex_strterm;
+          lex_strterm = 0;
+          lex_state = EXPR_BEG;
         }
-      compstmt '}'
+          compstmt '}'
         {
-      cond_stack = $<val>1;
-      cmdarg_stack = $<val>2;
-      lex_strterm = $<node>3;
-      $$ = dispatch1(string_embexpr, $4);
+          cond_stack = $<val>1;
+          cmdarg_stack = $<val>2;
+          lex_strterm = $<node>3;
+          reduce_rule(string_content__tSTRING_DBEG__compstmt__RC, 3);
         }
     ;
 
 string_dvar : tGVAR
         {
-      $$ = dispatch1(var_ref, $1);
+          reduce_rule(string_dvar__tGVAR, 1);
         }
     | tIVAR
         {
-      $$ = dispatch1(var_ref, $1);
+          reduce_rule(string_dvar__tIVAR, 1);
         }
     | tCVAR
         {
-      $$ = dispatch1(var_ref, $1);
+          reduce_rule(string_dvar__tCVAR, 1);
         }
     | backref
+        {
+          reduce_rule(string_dvar__backref, 1);
+        }
     ;
 
 symbol    : tSYMBEG sym
         {
-      lex_state = EXPR_END;
-      $$ = dispatch1(symbol, $2);
+          lex_state = EXPR_END;
+          reduce_rule(symbol__tSYMBEG__sym, 2);
         }
     ;
 
 sym   : fname
+        {
+          reduce_rule(sym__fname, 1);
+        }
     | tIVAR
+        {
+          reduce_rule(sym__tIVAR, 1);
+        }
     | tGVAR
+        {
+          reduce_rule(sym__tGVAR, 1);
+        }
     | tCVAR
+        {
+          reduce_rule(sym__tCVAR, 1);
+        }
     ;
 
 dsym    : tSYMBEG xstring_contents tSTRING_END
         {
-      lex_state = EXPR_END;
-      $$ = dispatch1(dyna_symbol, $2);
+          lex_state = EXPR_END;
+          reduce_rule(dsym__tSYMBEG__xstring_contents__tSTRING_END, 3);
         }
     ;
 
 numeric   : tINTEGER
+        {
+          reduce_rule(numeric__tINTEGER, 1);
+        }
     | tFLOAT
+        {
+          reduce_rule(numeric__tFLOAT, 1);
+        }
     | tUMINUS_NUM tINTEGER         %prec tLOWEST
         {
-      $$ = dispatch2(unary, redtree_intern("-@"), $2);
+          reduce_rule(numeric__tUMINUS_NUM__tINTEGER, 2);
         }
     | tUMINUS_NUM tFLOAT         %prec tLOWEST
         {
-      $$ = dispatch2(unary, redtree_intern("-@"), $2);
+          reduce_rule(numeric__tUMINUS_NUM__tFLOAT, 2);
         }
     ;
 
 user_variable : tIDENTIFIER
+        {
+          reduce_rule(user_variable__tIDENTIFIER, 1);
+          $$ = $1;
+        }
     | tIVAR
+        {
+          reduce_rule(user_variable__tIVAR, 1);
+          $$ = $1;
+        }
     | tGVAR
+        {
+          reduce_rule(user_variable__tGVAR, 1);
+          $$ = $1;
+        }
     | tCONSTANT
+        {
+          reduce_rule(user_variable__tCONSTANT, 1);
+          $$ = $1;
+        }
     | tCVAR
+        {
+          reduce_rule(user_variable__tCVAR, 1);
+          $$ = $1;
+        }
     ;
 
 keyword_variable: keyword_nil
+        {
+          reduce_rule(keyword_variable__keyword_nil, 1);
+          $$ = $1;
+        }
     | keyword_self
+        {
+          reduce_rule(keyword_variable__keyword_self, 1);
+          $$ = $1;
+        }
     | keyword_true
+        {
+          reduce_rule(keyword_variable__keyword_true, 1);
+          $$ = $1;
+        }
     | keyword_false
+        {
+          reduce_rule(keyword_variable__keyword_false, 1);
+          $$ = $1;
+        }
     | keyword__FILE__
+        {
+          reduce_rule(keyword_variable__keyword_FILE, 1);
+          $$ = $1;
+        }
     | keyword__LINE__
+        {
+          reduce_rule(keyword_variable__keyword_LINE, 1);
+          $$ = $1;
+        }
     | keyword__ENCODING__
+        {
+          reduce_rule(keyword_variable__keyword_ENCODING, 1);
+          $$ = $1;
+        }
     ;
 
 var_ref   : user_variable
         {
-      if (id_is_var(get_id($1))) {
-          $$ = dispatch1(var_ref, $1);
-      }
-      else {
-          $$ = dispatch1(vcall, $1);
-      }
+          if (id_is_var(get_id($1))) {
+            reduce_rule(var_ref__user_variable, 1);
+          }
+          else {
+            reduce_rule(vcall__user_variable, 1);
+          }
         }
     | keyword_variable
         {
-      $$ = dispatch1(var_ref, $1);
+          reduce_rule(var_ref__keyword_variable, 1);
         }
     ;
 
 var_lhs   : user_variable
         {
-      $$ = assignable($1, 0);
-      $$ = dispatch1(var_field, $$);
+          assignable($1, 0);
+          reduce_rule(var_lhs__user_variable, 1);
         }
     | keyword_variable
         {
-            $$ = assignable($1, 0);
-      $$ = dispatch1(var_field, $$);
+          assignable($1, 0);
+          reduce_rule(var_field__keyword_variable, 1);
         }
     ;
 
 backref   : tNTH_REF
+        {
+          reduce_rule(backref__tNTH_REF, 1);
+        }
     | tBACK_REF
+        {
+          reduce_rule(backref__tBACK_REF, 1);
+        }
     ;
 
 superclass  : term
         {
-      $$ = Qnil;
+          reduce_rule(superclass__term, 1);
         }
     | '<'
         {
-      lex_state = EXPR_BEG;
+          lex_state = EXPR_BEG;
         }
-      expr_value term
+          expr_value term
         {
-      $$ = $3;
+          reduce_rule(superclass__LT__expr_value__term, 3);
         }
     | error term
         {
-      yyerrok;
-      $$ = Qnil;
+          yyerrok;
+          reduce_rule(superclass__error__term, 2);
         }
     ;
 
 f_arglist : '(' f_args rparen
         {
-      $$ = dispatch1(paren, $2);
+          reduce_rule(f_arglist__LR__f_args__rparen, 3);
 
-      lex_state = EXPR_BEG;
-      command_start = TRUE;
+          lex_state = EXPR_BEG;
+          command_start = TRUE;
         }
     | f_args term
         {
-      $$ = $1;
+          reduce_rule(f_arglist__f_args__term, 2);
         }
     ;
 
 f_args    : f_arg ',' f_optarg ',' f_rest_arg opt_f_block_arg
         {
-      $$ = params_new($1, $3, $5, Qnil, escape_Qundef($6));
+          reduce_rule(f_args__f_arg__COMMA__f_optarg__COMMA__f_rest_arg__opt_f_block_arg, 6);
         }
     | f_arg ',' f_optarg ',' f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new($1, $3, $5, $7, escape_Qundef($8));
+          reduce_rule(f_args__f_arg__COMMA__f_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 8);
         }
     | f_arg ',' f_optarg opt_f_block_arg
         {
-      $$ = params_new($1, $3, Qnil, Qnil, escape_Qundef($4));
+          reduce_rule(f_args__f_arg__COMMA__f_optarg__opt_f_block_arg, 4);
         }
     | f_arg ',' f_optarg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new($1, $3, Qnil, $5, escape_Qundef($6));
+          reduce_rule(f_args__f_arg__COMMA__f_optarg__COMMA__f_arg__opt_f_block_arg, 6);
         }
     | f_arg ',' f_rest_arg opt_f_block_arg
         {
-      $$ = params_new($1, Qnil, $3, Qnil, escape_Qundef($4));
+          reduce_rule(f_args__f_arg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         }
     | f_arg ',' f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new($1, Qnil, $3, $5, escape_Qundef($6));
+          reduce_rule(f_args__f_arg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         }
     | f_arg opt_f_block_arg
         {
-      $$ = params_new($1, Qnil, Qnil, Qnil,escape_Qundef($2));
+          reduce_rule(f_args__f_arg__opt_f_block_arg, 2);
         }
     | f_optarg ',' f_rest_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, $3, Qnil, escape_Qundef($4));
+          reduce_rule(f_args__f_optarg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         }
     | f_optarg ',' f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, $3, $5, escape_Qundef($6));
+          reduce_rule(f_args__f_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         }
     | f_optarg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, Qnil, Qnil,escape_Qundef($2));
+          reduce_rule(f_args__f_optarg__opt_f_block_arg, 2);
         }
     | f_optarg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, $1, Qnil, $3, escape_Qundef($4));
+          reduce_rule(f_args__f_optarg__COMMA__f_arg__opt_f_block_arg, 4);
         }
     | f_rest_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, Qnil, $1, Qnil,escape_Qundef($2));
+          reduce_rule(f_args__f_rest_arg__opt_f_block_arg, 2);
         }
     | f_rest_arg ',' f_arg opt_f_block_arg
         {
-      $$ = params_new(Qnil, Qnil, $1, $3, escape_Qundef($4));
+          reduce_rule(f_args__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 4);
         }
     | f_block_arg
         {
-      $$ = params_new(Qnil, Qnil, Qnil, Qnil, $1);
+          reduce_rule(f_args__f_block_arg, 1);
         }
-    | /* none */
+    | 
         {
-      $$ = params_new(Qnil, Qnil, Qnil, Qnil, Qnil);
+          reduce_rule(f_args__, 0);
         }
     ;
 
 f_bad_arg : tCONSTANT
         {
-      $$ = dispatch1(param_error, $1);
+          reduce_rule(f_bad_arg__tCONSTANT, 1);
         }
     | tIVAR
         {
-      $$ = dispatch1(param_error, $1);
+          reduce_rule(f_bad_arg__tIVAR, 1);
         }
     | tGVAR
         {
-      $$ = dispatch1(param_error, $1);
+          reduce_rule(f_bad_arg__tGVAR, 1);
         }
     | tCVAR
         {
-      $$ = dispatch1(param_error, $1);
+          reduce_rule(f_bad_arg__tCVAR, 1);
         }
     ;
 
 f_norm_arg  : f_bad_arg
+        {
+          reduce_rule(f_norm_arg__f_bad_arg, 1);
+        }
     | tIDENTIFIER
         {
-      formal_argument(get_id($1));
-      $$ = $1;
+          formal_argument(get_id($1));
+          reduce_rule(f_norm_arg__tIDENTIFIER, 1);
+          $$ = $1;
         }
     ;
 
 f_arg_item  : f_norm_arg
         {
-      arg_var(get_id($1));
-      $$ = get_value($1);
+          arg_var(get_id($1));
+          get_value($1);
+          reduce_rule(f_arg_item__f_norm_arg, 1);
         }
     | tLPAREN f_margs rparen
         {
-      ID tid = internal_id();
-      arg_var(tid);
+          ID tid = internal_id();
+          arg_var(tid);
 
-      $$ = dispatch1(mlhs_paren, $2);
+          reduce_rule(f_arg_item__tLPAREN__f_margs__rparen, 3);
         }
     ;
 
 f_arg   : f_arg_item
-/*
-*/
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(f_arg__f_arg_item, 1);
         }
-
     | f_arg ',' f_arg_item
         {
-      $$ = rb_ary_push($1, $3);
+          reduce_rule(f_arg__f_arg__COMMA__f_arg_item, 3);
         }
     ;
 
 f_opt   : tIDENTIFIER '=' arg_value
         {
-      arg_var(formal_argument(get_id($1)));
-      $$ = assignable($1, $3);
-      $$ = rb_assoc_new($$, $3);
+          arg_var(formal_argument(get_id($1)));
+          assignable($1, $3);
+          reduce_rule(f_opt__tIDENTIFIER__EQ__arg_value, 3);
         }
     ;
 
 f_block_opt : tIDENTIFIER '=' primary_value
         {
-      arg_var(formal_argument(get_id($1)));
-      $$ = assignable($1, $3);
-      $$ = rb_assoc_new($$, $3);
+          arg_var(formal_argument(get_id($1)));
+          assignable($1, $3);
+          reduce_rule(f_block_opt__tIDENTIFIER__EQ__primary_value, 3);
         }
     ;
 
 f_block_optarg  : f_block_opt
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(f_block_optarg__f_block_opt, 1);
         }
     | f_block_optarg ',' f_block_opt
         {
-      $$ = rb_ary_push($1, $3);
+          reduce_rule(f_block_optarg__f_block_optarg__COMMA__f_block_opt, 3);
         }
     ;
 
 f_optarg  : f_opt
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(f_optarg__f_opt, 1);
         }
     | f_optarg ',' f_opt
         {
-      $$ = rb_ary_push($1, $3);
+          reduce_rule(f_optarg__f_optarg__COMMA__f_opt, 3);
         }
     ;
 
 restarg_mark  : '*'
+        {
+          reduce_rule(restarg_mark__TIMES, 1);
+        }
     | tSTAR
+        {
+          reduce_rule(restarg_mark__tSTAR, 1);
+        }
     ;
 
 f_rest_arg  : restarg_mark tIDENTIFIER
         {
-      arg_var(shadowing_lvar(get_id($2)));
-      $$ = dispatch1(rest_param, $2);
+          arg_var(shadowing_lvar(get_id($2)));
+          reduce_rule(f_rest_arg__restarg_mark__tIDENTIFIER, 2);
         }
     | restarg_mark
         {
-      $$ = dispatch1(rest_param, Qnil);
+          reduce_rule(f_rest_arg__restarg_mark, 1);
         }
     ;
 
 blkarg_mark : '&'
+        {
+          reduce_rule(blkarg_mark__AND, 1);
+        }
     | tAMPER
+        {
+          reduce_rule(blkarg_mark__tAMPER, 1);
+        }
     ;
 
 f_block_arg : blkarg_mark tIDENTIFIER
         {
-      arg_var(shadowing_lvar(get_id($2)));
-      $$ = dispatch1(blockarg, $2);
+          arg_var(shadowing_lvar(get_id($2)));
+          reduce_rule(f_block_arg__blkarg_mark__tIDENTIFIER, 2);
         }
     ;
 
 opt_f_block_arg : ',' f_block_arg
         {
-      $$ = $2;
+          reduce_rule(opt_f_block_arg__COMMA__f_block_arg, 2);
         }
     | none
         {
-      $$ = Qundef;
+          reduce_rule(opt_f_block_arg__none, 1);
         }
     ;
 
 singleton : var_ref
         {
-      $$ = $1;
+          reduce_rule(singleton__var_ref, 1);
         }
     | '(' {lex_state = EXPR_BEG;} expr rparen
         {
-      $$ = dispatch1(paren, $3);
+          reduce_rule(singleton__LR__expr__rparen, 3);
         }
     ;
 
 assoc_list  : none
+        {
+          reduce_rule(assoc_list__none, 1);
+        }
     | assocs trailer
         {
-      $$ = dispatch1(assoclist_from_args, $1);
+          reduce_rule(assoc_list__assocs__trailer, 2);
         }
     ;
 
 assocs    : assoc
-/*
-*/
         {
-      $$ = rb_ary_new3(1, $1);
+          reduce_rule(assocs__assoc, 1);
         }
-
     | assocs ',' assoc
         {
-      $$ = rb_ary_push($1, $3);
+          reduce_rule(assocs__assocs__COMMA__assoc, 3);
         }
     ;
 
-assoc   : arg_value tASSOC arg_value
+assoc  : arg_value tASSOC arg_value
         {
-      $$ = dispatch2(assoc_new, $1, $3);
+          reduce_rule(assoc__arg_value__tASSOC__arg_value, 3);
         }
     | tLABEL arg_value
         {
-      $$ = dispatch2(assoc_new, $1, $2);
+          reduce_rule(assoc__tLABEL__arg_value, 2);
         }
     ;
 
 operation : tIDENTIFIER
+        {
+          reduce_rule(operation__tIDENTIFIER, 1);
+        }
     | tCONSTANT
+        {
+          reduce_rule(operation__tCONSTANT, 1);
+        }
     | tFID
+        {
+          reduce_rule(operation__tFID, 1);
+        }
     ;
 
 operation2  : tIDENTIFIER
+        {
+          reduce_rule(operation2__tIDENTIFIER, 1);
+        }
     | tCONSTANT
+        {
+          reduce_rule(operation2__tCONSTANT, 1);
+        }
     | tFID
+        {
+          reduce_rule(operation2__tFID, 1);
+        }
     | op
+        {
+          reduce_rule(operation2__op, 1);
+        }
     ;
 
 operation3  : tIDENTIFIER
+        {
+          reduce_rule(operation3__tIDENTIFIER, 1);
+        }
     | tFID
+        {
+          reduce_rule(operation3__tFID, 1);
+        }
     | op
+        {
+          reduce_rule(operation3__op, 1);
+        }
     ;
 
 dot_or_colon  : '.'
-/*
-*/
-        { $$ = $<val>1; }
-
+        {
+          reduce_rule(dot_or_colon__DOT, 1);
+        }
     | tCOLON2
-/*
-*/
-        { $$ = $<val>1; }
-
+        {
+          reduce_rule(dot_or_colon__tCOLON2, 1);
+        }
     ;
 
-opt_terms : /* none */
+opt_terms : 
+        {
+          reduce_rule(opt_terms__, 0);
+        }
     | terms
+        {
+          reduce_rule(opt_terms__terms, 1);
+        }
     ;
 
-opt_nl    : /* none */
+opt_nl    : 
+        {
+          reduce_rule(opt_nl__, 0);
+        }
     | '\n'
+        {
+          reduce_rule(opt_nl__NL, 1);
+        }
     ;
 
-rparen    : opt_nl ')'
+rparen  : opt_nl ')'
+        {
+          reduce_rule(rparen__opt_nl__RR, 2);
+        }
     ;
 
 rbracket  : opt_nl ']'
+        {
+          reduce_rule(rbracket__opt_nl__RS, 2);
+        }
     ;
 
-trailer   : /* none */
+trailer   : 
+        {
+          reduce_rule(trailer__, 0);
+        }
     | '\n'
+        {
+          reduce_rule(trailer__NL, 1);
+        }
     | ','
+        {
+          reduce_rule(trailer__COMMA, 1);
+        }
     ;
 
-term    : ';' {yyerrok;}
+term    : ';'
+        {
+          yyerrok; reduce_rule(term__SEMI, 1);
+        }
     | '\n'
+        {
+          reduce_rule(term__NL, 1);
+        }
     ;
 
 terms   : term
-    | terms ';' {yyerrok;}
+        {
+          reduce_rule(terms__term, 1);
+        }
+    | terms ';'
+        {
+          yyerrok;
+          reduce_rule(terms__terms__SEMI, 2);
+        }
     ;
 
-none    : /* none */
+none    : 
         {
-      $$ = Qundef;
+          reduce_rule(none__, 0);
         }
     ;
 %%
@@ -2862,51 +3224,6 @@ redtree_yylval_id(ID x)
 
 #define yylval_rval (*(RB_TYPE_P(yylval.val, T_NODE) ? &yylval.node->nd_rval : &yylval.val))
 
-static int
-redtree_has_scan_event(struct parser_params *parser)
-{
-
-    if (lex_p < parser->tokp) rb_raise(rb_eRuntimeError, "lex_p < tokp");
-    return lex_p > parser->tokp;
-}
-
-static VALUE
-redtree_scan_event_val(struct parser_params *parser, int t)
-{
-    VALUE str = STR_NEW(parser->tokp, lex_p - parser->tokp);
-    VALUE rval = redtree_dispatch1(parser, redtree_token2eventid(t), str);
-    redtree_flush(parser);
-    return rval;
-}
-
-static void
-redtree_dispatch_scan_event(struct parser_params *parser, int t)
-{
-    if (!redtree_has_scan_event(parser)) return;
-    yylval_rval = redtree_scan_event_val(parser, t);
-}
-
-static void
-redtree_dispatch_ignored_scan_event(struct parser_params *parser, int t)
-{
-    if (!redtree_has_scan_event(parser)) return;
-    (void)redtree_scan_event_val(parser, t);
-}
-
-static void
-redtree_dispatch_delayed_token(struct parser_params *parser, int t)
-{
-    int saved_line = ruby_sourceline;
-    const char *saved_tokp = parser->tokp;
-
-    ruby_sourceline = parser->delayed_line;
-    parser->tokp = lex_pbeg + parser->delayed_col;
-    yylval_rval = redtree_dispatch1(parser, redtree_token2eventid(t), parser->delayed);
-    parser->delayed = Qnil;
-    ruby_sourceline = saved_line;
-    parser->tokp = saved_tokp;
-}
-
 #include "ruby/regex.h"
 #include "ruby/util.h"
 
@@ -2934,7 +3251,6 @@ redtree_dispatch_delayed_token(struct parser_params *parser, int t)
 static int
 parser_yyerror(struct parser_params *parser, const char *msg)
 {
-    dispatch1(parse_error, STR_NEW2(msg));
     return 0;
 }
 
@@ -3010,7 +3326,7 @@ parser_str_new(const char *p, long n, rb_encoding *enc, int func, rb_encoding *e
   if (rb_enc_str_coderange(str) == ENC_CODERANGE_7BIT) {
   }
   else if (enc0 == rb_usascii_encoding() && enc != rb_utf8_encoding()) {
-      rb_enc_associate(str, rb_ascii8bit_encoding());
+          rb_enc_associate(str, rb_ascii8bit_encoding());
   }
     }
 
@@ -3030,17 +3346,17 @@ parser_nextc(struct parser_params *parser)
   VALUE v = lex_nextline;
   lex_nextline = 0;
   if (!v) {
-      if (parser->eofp)
+          if (parser->eofp)
     return -1;
 
-      if (!lex_input || NIL_P(v = lex_getline(parser))) {
+          if (!lex_input || NIL_P(v = lex_getline(parser))) {
     parser->eofp = Qtrue;
     lex_goto_eol(parser);
     return -1;
-      }
+          }
   }
   {
-      if (parser->tokp < lex_pend) {
+          if (parser->tokp < lex_pend) {
     if (NIL_P(parser->delayed)) {
         parser->delayed = rb_str_buf_new(1024);
         rb_str_buf_cat(parser->delayed,
@@ -3052,17 +3368,17 @@ parser_nextc(struct parser_params *parser)
         rb_str_buf_cat(parser->delayed,
            parser->tokp, lex_pend - parser->tokp);
     }
-      }
-      if (heredoc_end > 0) {
+          }
+          if (heredoc_end > 0) {
     ruby_sourceline = heredoc_end;
     heredoc_end = 0;
-      }
-      ruby_sourceline++;
-      parser->line_count++;
-      lex_pbeg = lex_p = RSTRING_PTR(v);
-      lex_pend = lex_p + RSTRING_LEN(v);
-      redtree_flush(parser);
-      lex_lastline = v;
+          }
+          ruby_sourceline++;
+          parser->line_count++;
+          lex_pbeg = lex_p = RSTRING_PTR(v);
+          lex_pend = lex_p + RSTRING_LEN(v);
+          redtree_flush(parser);
+          lex_lastline = v;
   }
     }
     c = (unsigned char)*lex_p++;
@@ -3163,32 +3479,32 @@ parser_tokadd_utf8(struct parser_params *parser, rb_encoding **encp,
     if (peek('{')) {  /* handle \u{...} form */
   do {
             if (regexp_literal) { tokadd(*lex_p); }
-      nextc();
-      codepoint = scan_hex(lex_p, 6, &numlen);
-      if (numlen == 0)  {
+          nextc();
+          codepoint = scan_hex(lex_p, 6, &numlen);
+          if (numlen == 0)  {
     yyerror("invalid Unicode escape");
     return 0;
-      }
-      if (codepoint > 0x10ffff) {
+          }
+          if (codepoint > 0x10ffff) {
     yyerror("invalid Unicode codepoint (too large)");
     return 0;
-      }
-      lex_p += numlen;
+          }
+          lex_p += numlen;
             if (regexp_literal) {
                 tokcopy((int)numlen);
             }
             else if (codepoint >= 0x80) {
     *encp = UTF8_ENC();
     if (string_literal) tokaddmbc(codepoint, *encp);
-      }
-      else if (string_literal) {
+          }
+          else if (string_literal) {
     tokadd(codepoint);
-      }
+          }
   } while (string_literal && (peek(' ') || peek('\t')));
 
   if (!peek('}')) {
-      yyerror("unterminated Unicode escape");
-      return 0;
+          yyerror("unterminated Unicode escape");
+          return 0;
   }
 
         if (regexp_literal) { tokadd('}'); }
@@ -3197,19 +3513,19 @@ parser_tokadd_utf8(struct parser_params *parser, rb_encoding **encp,
     else {      /* handle \uxxxx form */
   codepoint = scan_hex(lex_p, 4, &numlen);
   if (numlen < 4) {
-      yyerror("invalid Unicode escape");
-      return 0;
+          yyerror("invalid Unicode escape");
+          return 0;
   }
   lex_p += 4;
         if (regexp_literal) {
             tokcopy(4);
         }
   else if (codepoint >= 0x80) {
-      *encp = UTF8_ENC();
-      if (string_literal) tokaddmbc(codepoint, *encp);
+          *encp = UTF8_ENC();
+          if (string_literal) tokaddmbc(codepoint, *encp);
   }
   else if (string_literal) {
-      tokadd(codepoint);
+          tokadd(codepoint);
   }
     }
 
@@ -3227,85 +3543,85 @@ parser_read_escape(struct parser_params *parser, int flags,
     size_t numlen;
 
     switch (c = nextc()) {
-      case '\\':  /* Backslash */
+          case '\\':  /* Backslash */
   return c;
 
-      case 'n': /* newline */
+          case 'n': /* newline */
   return '\n';
 
-      case 't': /* horizontal tab */
+          case 't': /* horizontal tab */
   return '\t';
 
-      case 'r': /* carriage-return */
+          case 'r': /* carriage-return */
   return '\r';
 
-      case 'f': /* form-feed */
+          case 'f': /* form-feed */
   return '\f';
 
-      case 'v': /* vertical tab */
+          case 'v': /* vertical tab */
   return '\13';
 
-      case 'a': /* alarm(bell) */
+          case 'a': /* alarm(bell) */
   return '\007';
 
-      case 'e': /* escape */
+          case 'e': /* escape */
   return 033;
 
-      case '0': case '1': case '2': case '3': /* octal constant */
-      case '4': case '5': case '6': case '7':
+          case '0': case '1': case '2': case '3': /* octal constant */
+          case '4': case '5': case '6': case '7':
   pushback(c);
   c = scan_oct(lex_p, 3, &numlen);
   lex_p += numlen;
   return c;
 
-      case 'x': /* hex constant */
+          case 'x': /* hex constant */
   c = tok_hex(&numlen);
   if (numlen == 0) return 0;
   return c;
 
-      case 'b': /* backspace */
+          case 'b': /* backspace */
   return '\010';
 
-      case 's': /* space */
+          case 's': /* space */
   return ' ';
 
-      case 'M':
+          case 'M':
   if (flags & ESCAPE_META) goto eof;
   if ((c = nextc()) != '-') {
-      pushback(c);
-      goto eof;
+          pushback(c);
+          goto eof;
   }
   if ((c = nextc()) == '\\') {
-      if (peek('u')) goto eof;
-      return read_escape(flags|ESCAPE_META, encp) | 0x80;
+          if (peek('u')) goto eof;
+          return read_escape(flags|ESCAPE_META, encp) | 0x80;
   }
   else if (c == -1 || !ISASCII(c)) goto eof;
   else {
-      return ((c & 0xff) | 0x80);
+          return ((c & 0xff) | 0x80);
   }
 
-      case 'C':
+          case 'C':
   if ((c = nextc()) != '-') {
-      pushback(c);
-      goto eof;
+          pushback(c);
+          goto eof;
   }
-      case 'c':
+          case 'c':
   if (flags & ESCAPE_CONTROL) goto eof;
   if ((c = nextc())== '\\') {
-      if (peek('u')) goto eof;
-      c = read_escape(flags|ESCAPE_CONTROL, encp);
+          if (peek('u')) goto eof;
+          c = read_escape(flags|ESCAPE_CONTROL, encp);
   }
   else if (c == '?')
-      return 0177;
+          return 0177;
   else if (c == -1 || !ISASCII(c)) goto eof;
   return c & 0x9f;
 
-      eof:
-      case -1:
+          eof:
+          case -1:
         yyerror("Invalid escape character syntax");
   return '\0';
 
-      default:
+          default:
   return c;
     }
 }
@@ -3326,64 +3642,64 @@ parser_tokadd_escape(struct parser_params *parser, rb_encoding **encp)
 
   first:
     switch (c = nextc()) {
-      case '\n':
+          case '\n':
   return 0;   /* just ignore */
 
-      case '0': case '1': case '2': case '3': /* octal constant */
-      case '4': case '5': case '6': case '7':
+          case '0': case '1': case '2': case '3': /* octal constant */
+          case '4': case '5': case '6': case '7':
   {
-      ruby_scan_oct(--lex_p, 3, &numlen);
-      if (numlen == 0) goto eof;
-      lex_p += numlen;
-      tokcopy((int)numlen + 1);
+          ruby_scan_oct(--lex_p, 3, &numlen);
+          if (numlen == 0) goto eof;
+          lex_p += numlen;
+          tokcopy((int)numlen + 1);
   }
   return 0;
 
-      case 'x': /* hex constant */
+          case 'x': /* hex constant */
   {
-      tok_hex(&numlen);
-      if (numlen == 0) return -1;
-      tokcopy((int)numlen + 2);
+          tok_hex(&numlen);
+          if (numlen == 0) return -1;
+          tokcopy((int)numlen + 2);
   }
   return 0;
 
-      case 'M':
+          case 'M':
   if (flags & ESCAPE_META) goto eof;
   if ((c = nextc()) != '-') {
-      pushback(c);
-      goto eof;
+          pushback(c);
+          goto eof;
   }
   tokcopy(3);
   flags |= ESCAPE_META;
   goto escaped;
 
-      case 'C':
+          case 'C':
   if (flags & ESCAPE_CONTROL) goto eof;
   if ((c = nextc()) != '-') {
-      pushback(c);
-      goto eof;
+          pushback(c);
+          goto eof;
   }
   tokcopy(3);
   goto escaped;
 
-      case 'c':
+          case 'c':
   if (flags & ESCAPE_CONTROL) goto eof;
   tokcopy(2);
   flags |= ESCAPE_CONTROL;
-      escaped:
+          escaped:
   if ((c = nextc()) == '\\') {
-      goto first;
+          goto first;
   }
   else if (c == -1) goto eof;
   tokadd(c);
   return 0;
 
-      eof:
-      case -1:
+          eof:
+          case -1:
         yyerror("Invalid escape character syntax");
   return -1;
 
-      default:
+          default:
         tokadd('\\');
   tokadd(c);
     }
@@ -3404,16 +3720,16 @@ parser_regx_options(struct parser_params *parser)
             options |= RE_OPTION_ONCE;
         }
         else if (rb_char_to_option_kcode(c, &opt, &kc)) {
-      if (kc >= 0) {
+          if (kc >= 0) {
     if (kc != rb_ascii8bit_encindex()) kcode = c;
     kopt = opt;
-      }
-      else {
+          }
+          else {
     options |= opt;
-      }
+          }
         }
         else {
-      tokadd(c);
+          tokadd(c);
         }
     }
     options |= kopt;
@@ -3481,26 +3797,26 @@ parser_tokadd_string(struct parser_params *parser,
 
     while ((c = nextc()) != -1) {
   if (paren && c == paren) {
-      ++*nest;
+          ++*nest;
   }
   else if (c == term) {
-      if (!nest || !*nest) {
+          if (!nest || !*nest) {
     pushback(c);
     break;
-      }
-      --*nest;
+          }
+          --*nest;
   }
   else if ((func & STR_FUNC_EXPAND) && c == '#' && lex_p < lex_pend) {
-      int c2 = *lex_p;
-      if (c2 == '$' || c2 == '@' || c2 == '{') {
+          int c2 = *lex_p;
+          if (c2 == '$' || c2 == '@' || c2 == '{') {
     pushback(c);
     break;
-      }
+          }
   }
   else if (c == '\\') {
-      const char *beg = lex_p - 1;
-      c = nextc();
-      switch (c) {
+          const char *beg = lex_p - 1;
+          c = nextc();
+          switch (c) {
         case '\n':
     if (func & STR_FUNC_QWORDS) break;
     if (func & STR_FUNC_EXPAND) continue;
@@ -3528,9 +3844,9 @@ parser_tokadd_string(struct parser_params *parser,
     if (func & STR_FUNC_REGEXP) {
         pushback(c);
         if ((c = tokadd_escape(&enc)) < 0)
-      return -1;
+          return -1;
         if (has_nonascii && enc != *encp) {
-      mixed_escape(beg, enc, *encp);
+          mixed_escape(beg, enc, *encp);
         }
         continue;
     }
@@ -3547,27 +3863,27 @@ parser_tokadd_string(struct parser_params *parser,
         pushback(c);
         continue;
     }
-      }
+          }
   }
   else if (!parser_isascii()) {
-      has_nonascii = 1;
-      if (enc != *encp) {
+          has_nonascii = 1;
+          if (enc != *encp) {
     mixed_error(enc, *encp);
     continue;
-      }
-      if (tokadd_mbchar(c) == -1) return -1;
-      continue;
+          }
+          if (tokadd_mbchar(c) == -1) return -1;
+          continue;
   }
   else if ((func & STR_FUNC_QWORDS) && ISSPACE(c)) {
-      pushback(c);
-      break;
+          pushback(c);
+          break;
   }
         if (c & 0x80) {
             has_nonascii = 1;
-      if (enc != *encp) {
+          if (enc != *encp) {
     mixed_error(enc, *encp);
     continue;
-      }
+          }
         }
   tokadd(c);
     }
@@ -3595,8 +3911,8 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
     }
     if (c == term && !quote->nd_nest) {
   if (func & STR_FUNC_QWORDS) {
-      quote->nd_func = -1;
-      return ' ';
+          quote->nd_func = -1;
+          return ' ';
   }
   if (!(func & STR_FUNC_REGEXP)) return tSTRING_END;
         set_yylval_num(regx_options());
@@ -3611,10 +3927,10 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
   switch (c = nextc()) {
     case '$':
     case '@':
-      pushback(c);
-      return tSTRING_DVAR;
+          pushback(c);
+          return tSTRING_DVAR;
     case '{':
-      return tSTRING_DBEG;
+          return tSTRING_DBEG;
   }
   tokadd('#');
     }
@@ -3623,14 +3939,14 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
           &enc) == -1) {
   ruby_sourceline = nd_line(quote);
   if (func & STR_FUNC_REGEXP) {
-      if (parser->eofp)
+          if (parser->eofp)
     compile_error(PARSER_ARG "unterminated regexp meets end of file");
-      return tREGEXP_END;
+          return tREGEXP_END;
   }
   else {
-      if (parser->eofp)
+          if (parser->eofp)
     compile_error(PARSER_ARG "unterminated string meets end of file");
-      return tSTRING_END;
+          return tSTRING_END;
   }
     }
 
@@ -3640,9 +3956,9 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
     if (!NIL_P(parser->delayed)) {
   ptrdiff_t len = lex_p - parser->tokp;
   if (len > 0) {
-      rb_enc_str_buf_cat(parser->delayed, parser->tokp, len, enc);
+          rb_enc_str_buf_cat(parser->delayed, parser->tokp, len, enc);
   }
-  redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+  // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
   parser->tokp = lex_p;
     }
 
@@ -3660,45 +3976,45 @@ parser_heredoc_identifier(struct parser_params *parser)
   func = STR_FUNC_INDENT;
     }
     switch (c) {
-      case '\'':
+          case '\'':
   func |= str_squote; goto quoted;
-      case '"':
+          case '"':
   func |= str_dquote; goto quoted;
-      case '`':
+          case '`':
   func |= str_xquote;
-      quoted:
+          quoted:
   newtok();
   tokadd(func);
   term = c;
   while ((c = nextc()) != -1 && c != term) {
-      if (tokadd_mbchar(c) == -1) return 0;
+          if (tokadd_mbchar(c) == -1) return 0;
   }
   if (c == -1) {
-      compile_error(PARSER_ARG "unterminated here document identifier");
-      return 0;
+          compile_error(PARSER_ARG "unterminated here document identifier");
+          return 0;
   }
   break;
 
-      default:
+          default:
   if (!parser_is_identchar()) {
-      pushback(c);
-      if (func & STR_FUNC_INDENT) {
+          pushback(c);
+          if (func & STR_FUNC_INDENT) {
     pushback('-');
-      }
-      return 0;
+          }
+          return 0;
   }
   newtok();
   term = '"';
   tokadd(func |= str_dquote);
   do {
-      if (tokadd_mbchar(c) == -1) return 0;
+          if (tokadd_mbchar(c) == -1) return 0;
   } while ((c = nextc()) != -1 && parser_is_identchar());
   pushback(c);
   break;
     }
 
     tokfix();
-    redtree_dispatch_scan_event(parser, tHEREDOC_BEG);
+    // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tHEREDOC_BEG);
     len = lex_p - lex_pbeg;
     lex_goto_eol(parser);
     lex_strterm = rb_node_newnode(NODE_HEREDOC,
@@ -3745,10 +4061,11 @@ parser_whole_match_p(struct parser_params *parser,
 static void
 redtree_dispatch_heredoc_end(struct parser_params *parser)
 {
-    if (!NIL_P(parser->delayed))
-  redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+    if (!NIL_P(parser->delayed)) {
+      // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+    }
     lex_goto_eol(parser);
-    redtree_dispatch_ignored_scan_event(parser, tHEREDOC_END);
+    // TODO(adgar): Into Lex Stream: redtree_dispatch_ignored_scan_event(parser, tHEREDOC_END);
 }
 
 #define dispatch_heredoc_end() redtree_dispatch_heredoc_end(parser)
@@ -3767,21 +4084,21 @@ parser_here_document(struct parser_params *parser, NODE *here)
     indent = (func = *eos++) & STR_FUNC_INDENT;
 
     if ((c = nextc()) == -1) {
-      error:
+          error:
   compile_error(PARSER_ARG "can't find string \"%s\" anywhere before EOF", eos);
   if (NIL_P(parser->delayed)) {
-      redtree_dispatch_scan_event(parser, tSTRING_CONTENT);
+          // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tSTRING_CONTENT);
   }
   else {
-      if (str ||
+          if (str ||
     ((len = lex_p - parser->tokp) > 0 &&
      (str = STR_NEW3(parser->tokp, len, enc, func), 1))) {
     rb_str_append(parser->delayed, str);
-      }
-      redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+          }
+          // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
   }
   lex_goto_eol(parser);
-      restore:
+          restore:
   heredoc_restore(lex_strterm);
   lex_strterm = 0;
   return 0;
@@ -3794,58 +4111,58 @@ parser_here_document(struct parser_params *parser, NODE *here)
 
     if (!(func & STR_FUNC_EXPAND)) {
   do {
-      p = RSTRING_PTR(lex_lastline);
-      pend = lex_pend;
-      if (pend > p) {
+          p = RSTRING_PTR(lex_lastline);
+          pend = lex_pend;
+          if (pend > p) {
     switch (pend[-1]) {
-      case '\n':
+          case '\n':
         if (--pend == p || pend[-1] != '\r') {
-      pend++;
-      break;
+          pend++;
+          break;
         }
-      case '\r':
+          case '\r':
         --pend;
     }
-      }
-      if (str)
+          }
+          if (str)
     rb_str_cat(str, p, pend - p);
-      else
+          else
     str = STR_NEW(p, pend - p);
-      if (pend < lex_pend) rb_str_cat(str, "\n", 1);
-      lex_goto_eol(parser);
-      if (nextc() == -1) {
+          if (pend < lex_pend) rb_str_cat(str, "\n", 1);
+          lex_goto_eol(parser);
+          if (nextc() == -1) {
     if (str) dispose_string(str);
     goto error;
-      }
+          }
   } while (!whole_match_p(eos, len, indent));
     }
     else {
   /*  int mb = ENC_CODERANGE_7BIT, *mbp = &mb;*/
   newtok();
   if (c == '#') {
-      switch (c = nextc()) {
+          switch (c = nextc()) {
         case '$':
         case '@':
     pushback(c);
     return tSTRING_DVAR;
         case '{':
     return tSTRING_DBEG;
-      }
-      tokadd('#');
+          }
+          tokadd('#');
   }
   do {
-      pushback(c);
-      if ((c = tokadd_string(func, '\n', 0, NULL, &enc)) == -1) {
+          pushback(c);
+          if ((c = tokadd_string(func, '\n', 0, NULL, &enc)) == -1) {
     if (parser->eofp) goto error;
     goto restore;
-      }
-      if (c != '\n') {
+          }
+          if (c != '\n') {
     set_yylval_str(STR_NEW3(tok(), toklen(), enc, func));
     return tSTRING_CONTENT;
-      }
-      tokadd(nextc());
-      /*      if (mbp && mb == ENC_CODERANGE_UNKNOWN) mbp = 0;*/
-      if ((c = nextc()) == -1) goto error;
+          }
+          tokadd(nextc());
+          /*      if (mbp && mb == ENC_CODERANGE_UNKNOWN) mbp = 0;*/
+          if ((c = nextc()) == -1) goto error;
   } while (!whole_match_p(eos, len, indent));
   str = STR_NEW3(tok(), toklen(), enc, func);
     }
@@ -3861,7 +4178,7 @@ parser_here_document(struct parser_params *parser, NODE *here)
 static void
 arg_ambiguous_gen(struct parser_params *parser)
 {
-    dispatch0(arg_ambiguous);
+    
 }
 #define arg_ambiguous() (arg_ambiguous_gen(parser), 1)
 
@@ -3886,15 +4203,15 @@ parser_encode_length(struct parser_params *parser, const char *name, long len)
 
     if (len > 5 && name[nlen = len - 5] == '-') {
   if (rb_memcicmp(name + nlen + 1, "unix", 4) == 0)
-      return nlen;
+          return nlen;
     }
     if (len > 4 && name[nlen = len - 4] == '-') {
   if (rb_memcicmp(name + nlen + 1, "dos", 3) == 0)
-      return nlen;
+          return nlen;
   if (rb_memcicmp(name + nlen + 1, "mac", 3) == 0 &&
-      !(len == 8 && rb_memcicmp(name, "utf8-mac", len) == 0))
-      /* exclude UTF8-MAC because the encoding named "UTF8" doesn't exist in Ruby */
-      return nlen;
+          !(len == 8 && rb_memcicmp(name, "utf8-mac", len) == 0))
+          /* exclude UTF8-MAC because the encoding named "UTF8" doesn't exist in Ruby */
+          return nlen;
     }
     return len;
 }
@@ -3908,7 +4225,7 @@ parser_set_encode(struct parser_params *parser, const char *name)
 
     if (idx < 0) {
   excargs[1] = rb_sprintf("unknown encoding name: %s", name);
-      error:
+          error:
   excargs[0] = rb_eArgError;
   excargs[2] = rb_make_backtrace();
   rb_ary_unshift(excargs[2], rb_sprintf("%s:%d", ruby_sourcefile, ruby_sourceline));
@@ -3942,26 +4259,26 @@ magic_comment_marker(const char *str, long len)
     while (i < len) {
   switch (str[i]) {
     case '-':
-      if (str[i-1] == '*' && str[i-2] == '-') {
+          if (str[i-1] == '*' && str[i-2] == '-') {
     return str + i + 1;
-      }
-      i += 2;
-      break;
+          }
+          i += 2;
+          break;
     case '*':
-      if (i + 1 >= len) return 0;
-      if (str[i+1] != '-') {
+          if (i + 1 >= len) return 0;
+          if (str[i+1] != '-') {
     i += 4;
-      }
-      else if (str[i-1] != '-') {
+          }
+          else if (str[i-1] != '-') {
     i += 2;
-      }
-      else {
+          }
+          else {
     return str + i + 2;
-      }
-      break;
+          }
+          break;
     default:
-      i += 3;
-      break;
+          i += 3;
+          break;
   }
     }
     return 0;
@@ -3990,21 +4307,21 @@ parser_magic_comment(struct parser_params *parser, const char *str, long len)
   long n = 0;
 
   for (; len > 0 && *str; str++, --len) {
-      switch (*str) {
+          switch (*str) {
         case '\'': case '"': case ':': case ';':
     continue;
-      }
-      if (!ISSPACE(*str)) break;
+          }
+          if (!ISSPACE(*str)) break;
   }
   for (beg = str; len > 0; str++, --len) {
-      switch (*str) {
+          switch (*str) {
         case '\'': case '"': case ':': case ';':
     break;
         default:
     if (ISSPACE(*str)) break;
     continue;
-      }
-      break;
+          }
+          break;
   }
   for (end = str; len > 0 && ISSPACE(*str); str++, --len);
   if (!len) break;
@@ -4013,21 +4330,21 @@ parser_magic_comment(struct parser_params *parser, const char *str, long len)
   do str++; while (--len > 0 && ISSPACE(*str));
   if (!len) break;
   if (*str == '"') {
-      for (vbeg = ++str; --len > 0 && *str != '"'; str++) {
+          for (vbeg = ++str; --len > 0 && *str != '"'; str++) {
     if (*str == '\\') {
         --len;
         ++str;
     }
-      }
-      vend = str;
-      if (len) {
+          }
+          vend = str;
+          if (len) {
     --len;
     ++str;
-      }
+          }
   }
   else {
-      for (vbeg = str; len > 0 && *str != '"' && *str != ';' && !ISSPACE(*str); --len, str++);
-      vend = str;
+          for (vbeg = str; len > 0 && *str != '"' && *str != ';' && !ISSPACE(*str); --len, str++);
+          vend = str;
   }
   while (len > 0 && (*str == ';' || ISSPACE(*str))) --len, str++;
 
@@ -4035,9 +4352,9 @@ parser_magic_comment(struct parser_params *parser, const char *str, long len)
   str_copy(name, beg, n);
   s = RSTRING_PTR(name);
   for (i = 0; i < n; ++i) {
-      if (s[i] == '-') s[i] = '_';
+          if (s[i] == '-') s[i] = '_';
   }
-  dispatch2(magic_comment, name, val);
+  // reduce_rule(magic_comment, name, val); TODO(adgar): Insert into parse tree?
     }
 
     return TRUE;
@@ -4060,19 +4377,19 @@ set_file_encoding(struct parser_params *parser, const char *str, const char *sen
     case 'N': case 'n': str += 2; continue;
     case 'G': case 'g': str += 1; continue;
     case '=': case ':':
-      sep = 1;
-      str += 6;
-      break;
+          sep = 1;
+          str += 6;
+          break;
     default:
-      str += 6;
-      if (ISSPACE(*str)) break;
-      continue;
+          str += 6;
+          if (ISSPACE(*str)) break;
+          continue;
   }
   if (STRNCASECMP(str-6, "coding", 6) == 0) break;
     }
     for (;;) {
   do {
-      if (++str >= send) return;
+          if (++str >= send) return;
   } while (ISSPACE(*str));
   if (sep) break;
   if (*str != '=' && *str != ':') return;
@@ -4091,20 +4408,20 @@ parser_prepare(struct parser_params *parser)
 {
     int c = nextc();
     switch (c) {
-      case '#':
+          case '#':
   if (peek('!')) parser->has_shebang = 1;
   break;
-      case 0xef:    /* UTF-8 BOM marker */
+          case 0xef:    /* UTF-8 BOM marker */
   if (lex_pend - lex_p >= 2 &&
-      (unsigned char)lex_p[0] == 0xbb &&
-      (unsigned char)lex_p[1] == 0xbf) {
-      parser->enc = rb_utf8_encoding();
-      lex_p += 2;
-      lex_pbeg = lex_p;
-      return;
+          (unsigned char)lex_p[0] == 0xbb &&
+          (unsigned char)lex_p[1] == 0xbf) {
+          parser->enc = rb_utf8_encoding();
+          lex_p += 2;
+          lex_pbeg = lex_p;
+          return;
   }
   break;
-      case EOF:
+          case EOF:
   return;
     }
     pushback(c);
@@ -4118,14 +4435,14 @@ parser_prepare(struct parser_params *parser)
 #define IS_LABEL_POSSIBLE() ((lex_state == EXPR_BEG && !cmd_state) || IS_ARG())
 #define IS_LABEL_SUFFIX(n) (peek_n(':',(n)) && !peek_n(':', (n)+1))
 
-#define ambiguous_operator(op, syn) dispatch2(operator_ambiguous, redtree_intern(op), rb_str_new_cstr(syn))
+#define ambiguous_operator(op, syn)
 
 #define warn_balanced(op, syn) ((void) \
     (last_state != EXPR_CLASS && last_state != EXPR_DOT && \
      last_state != EXPR_FNAME && last_state != EXPR_ENDFN && \
      last_state != EXPR_ENDARG && \
      space_seen && !ISSPACE(c) && \
-     (ambiguous_operator(op, syn), 0)))
+     0))
 
 static int
 parser_yylex(struct parser_params *parser)
@@ -4141,19 +4458,19 @@ parser_yylex(struct parser_params *parser)
     if (lex_strterm) {
   int token;
   if (nd_type(lex_strterm) == NODE_HEREDOC) {
-      token = here_document(lex_strterm);
-      if (token == tSTRING_END) {
+          token = here_document(lex_strterm);
+          if (token == tSTRING_END) {
     lex_strterm = 0;
     lex_state = EXPR_END;
-      }
+          }
   }
   else {
-      token = parse_string(lex_strterm);
-      if (token == tSTRING_END || token == tREGEXP_END) {
+          token = parse_string(lex_strterm);
+          if (token == tSTRING_END || token == tREGEXP_END) {
     rb_gc_force_recycle((VALUE)lex_strterm);
     lex_strterm = 0;
     lex_state = EXPR_END;
-      }
+          }
   }
   return token;
     }
@@ -4162,42 +4479,42 @@ parser_yylex(struct parser_params *parser)
   retry:
     last_state = lex_state;
     switch (c = nextc()) {
-      case '\0':    /* NUL */
-      case '\004':    /* ^D */
-      case '\032':    /* ^Z */
-      case -1:      /* end of script. */
+          case '\0':    /* NUL */
+          case '\004':    /* ^D */
+          case '\032':    /* ^Z */
+          case -1:      /* end of script. */
   return 0;
 
   /* white spaces */
-      case ' ': case '\t': case '\f': case '\r':
-      case '\13': /* '\v' */
+          case ' ': case '\t': case '\f': case '\r':
+          case '\13': /* '\v' */
   space_seen = 1;
   while ((c = nextc())) {
-      switch (c) {
+          switch (c) {
         case ' ': case '\t': case '\f': case '\r':
         case '\13': /* '\v' */
     break;
         default:
     goto outofloop;
-      }
+          }
   }
-      outofloop:
+          outofloop:
   pushback(c);
-  redtree_dispatch_scan_event(parser, tSP);
+  // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tSP);
   goto retry;
 
-      case '#':   /* it's a comment */
+          case '#':   /* it's a comment */
   /* no magic_comment in shebang line */
   if (!parser_magic_comment(parser, lex_p, lex_pend - lex_p)) {
-      if (comment_at_top(parser)) {
+          if (comment_at_top(parser)) {
     set_file_encoding(parser, lex_p, lex_pend);
-      }
+          }
   }
   lex_p = lex_pend;
-        redtree_dispatch_scan_event(parser, tCOMMENT);
+        // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tCOMMENT);
         fallthru = TRUE;
   /* fall through */
-      case '\n':
+          case '\n':
   switch (lex_state) {
     case EXPR_BEG:
     case EXPR_FNAME:
@@ -4205,25 +4522,25 @@ parser_yylex(struct parser_params *parser)
     case EXPR_CLASS:
     case EXPR_VALUE:
             if (!fallthru) {
-                redtree_dispatch_scan_event(parser, tIGNORED_NL);
+                // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tIGNORED_NL);
             }
             fallthru = FALSE;
-      goto retry;
+          goto retry;
     default:
-      break;
+          break;
   }
   while ((c = nextc())) {
-      switch (c) {
+          switch (c) {
         case ' ': case '\t': case '\f': case '\r':
         case '\13': /* '\v' */
     space_seen = 1;
     break;
         case '.': {
-      if ((c = nextc()) != '.') {
+          if ((c = nextc()) != '.') {
           pushback(c);
           pushback('.');
           goto retry;
-      }
+          }
         }
         default:
     --ruby_sourceline;
@@ -4234,255 +4551,255 @@ parser_yylex(struct parser_params *parser)
         parser->tokp = lex_p;
     }
     goto normal_newline;
-      }
+          }
   }
-      normal_newline:
+          normal_newline:
   command_start = TRUE;
   lex_state = EXPR_BEG;
   return '\n';
 
-      case '*':
+          case '*':
   if ((c = nextc()) == '*') {
-      if ((c = nextc()) == '=') {
+          if ((c = nextc()) == '=') {
                 set_yylval_id(tPOW);
     lex_state = EXPR_BEG;
     return tOP_ASGN;
-      }
-      pushback(c);
-      c = tPOW;
+          }
+          pushback(c);
+          c = tPOW;
   }
   else {
-      if (c == '=') {
+          if (c == '=') {
                 set_yylval_id('*');
     lex_state = EXPR_BEG;
     return tOP_ASGN;
-      }
-      pushback(c);
-      if (IS_SPCARG(c)) {
+          }
+          pushback(c);
+          if (IS_SPCARG(c)) {
     rb_warning0("`*' interpreted as argument prefix");
     c = tSTAR;
-      }
-      else if (IS_BEG()) {
+          }
+          else if (IS_BEG()) {
     c = tSTAR;
-      }
-      else {
+          }
+          else {
     warn_balanced("*", "argument prefix");
     c = '*';
-      }
+          }
   }
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   return c;
 
-      case '!':
+          case '!':
   c = nextc();
   if (lex_state == EXPR_FNAME || lex_state == EXPR_DOT) {
-      lex_state = EXPR_ARG;
-      if (c == '@') {
+          lex_state = EXPR_ARG;
+          if (c == '@') {
     return '!';
-      }
+          }
   }
   else {
-      lex_state = EXPR_BEG;
+          lex_state = EXPR_BEG;
   }
   if (c == '=') {
-      return tNEQ;
+          return tNEQ;
   }
   if (c == '~') {
-      return tNMATCH;
+          return tNMATCH;
   }
   pushback(c);
   return '!';
 
-      case '=':
+          case '=':
   if (was_bol()) {
-      /* skip embedded rd document */
-      if (strncmp(lex_p, "begin", 5) == 0 && ISSPACE(lex_p[5])) {
+          /* skip embedded rd document */
+          if (strncmp(lex_p, "begin", 5) == 0 && ISSPACE(lex_p[5])) {
                 int first_p = TRUE;
 
                 lex_goto_eol(parser);
-                redtree_dispatch_scan_event(parser, tEMBDOC_BEG);
+                // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tEMBDOC_BEG);
     for (;;) {
         lex_goto_eol(parser);
                     if (!first_p) {
-                        redtree_dispatch_scan_event(parser, tEMBDOC);
+                        // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tEMBDOC);
                     }
                     first_p = FALSE;
         c = nextc();
         if (c == -1) {
-      compile_error(PARSER_ARG "embedded document meets end of file");
-      return 0;
+          compile_error(PARSER_ARG "embedded document meets end of file");
+          return 0;
         }
         if (c != '=') continue;
         if (strncmp(lex_p, "end", 3) == 0 &&
-      (lex_p + 3 == lex_pend || ISSPACE(lex_p[3]))) {
-      break;
+          (lex_p + 3 == lex_pend || ISSPACE(lex_p[3]))) {
+          break;
         }
     }
     lex_goto_eol(parser);
-                redtree_dispatch_scan_event(parser, tEMBDOC_END);
+                // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tEMBDOC_END);
     goto retry;
-      }
+          }
   }
 
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   if ((c = nextc()) == '=') {
-      if ((c = nextc()) == '=') {
+          if ((c = nextc()) == '=') {
     return tEQQ;
-      }
-      pushback(c);
-      return tEQ;
+          }
+          pushback(c);
+          return tEQ;
   }
   if (c == '~') {
-      return tMATCH;
+          return tMATCH;
   }
   else if (c == '>') {
-      return tASSOC;
+          return tASSOC;
   }
   pushback(c);
   return '=';
 
-      case '<':
+          case '<':
   last_state = lex_state;
   c = nextc();
   if (c == '<' &&
-      lex_state != EXPR_DOT &&
-      lex_state != EXPR_CLASS &&
-      !IS_END() &&
-      (!IS_ARG() || space_seen)) {
-      int token = heredoc_identifier();
-      if (token) return token;
+          lex_state != EXPR_DOT &&
+          lex_state != EXPR_CLASS &&
+          !IS_END() &&
+          (!IS_ARG() || space_seen)) {
+          int token = heredoc_identifier();
+          if (token) return token;
   }
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   if (c == '=') {
-      if ((c = nextc()) == '>') {
+          if ((c = nextc()) == '>') {
     return tCMP;
-      }
-      pushback(c);
-      return tLEQ;
+          }
+          pushback(c);
+          return tLEQ;
   }
   if (c == '<') {
-      if ((c = nextc()) == '=') {
+          if ((c = nextc()) == '=') {
                 set_yylval_id(tLSHFT);
     lex_state = EXPR_BEG;
     return tOP_ASGN;
-      }
-      pushback(c);
-      warn_balanced("<<", "here document");
-      return tLSHFT;
+          }
+          pushback(c);
+          warn_balanced("<<", "here document");
+          return tLSHFT;
   }
   pushback(c);
   return '<';
 
-      case '>':
+          case '>':
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   if ((c = nextc()) == '=') {
-      return tGEQ;
+          return tGEQ;
   }
   if (c == '>') {
-      if ((c = nextc()) == '=') {
+          if ((c = nextc()) == '=') {
                 set_yylval_id(tRSHFT);
     lex_state = EXPR_BEG;
     return tOP_ASGN;
-      }
-      pushback(c);
-      return tRSHFT;
+          }
+          pushback(c);
+          return tRSHFT;
   }
   pushback(c);
   return '>';
 
-      case '"':
+          case '"':
   lex_strterm = NEW_STRTERM(str_dquote, '"', 0);
   return tSTRING_BEG;
 
-      case '`':
+          case '`':
   if (lex_state == EXPR_FNAME) {
-      lex_state = EXPR_ENDFN;
-      return c;
+          lex_state = EXPR_ENDFN;
+          return c;
   }
   if (lex_state == EXPR_DOT) {
-      if (cmd_state)
+          if (cmd_state)
     lex_state = EXPR_CMDARG;
-      else
+          else
     lex_state = EXPR_ARG;
-      return c;
+          return c;
   }
   lex_strterm = NEW_STRTERM(str_xquote, '`', 0);
   return tXSTRING_BEG;
 
-      case '\'':
+          case '\'':
   lex_strterm = NEW_STRTERM(str_squote, '\'', 0);
   return tSTRING_BEG;
 
-      case '?':
+          case '?':
   if (IS_END()) {
-      lex_state = EXPR_VALUE;
-      return '?';
+          lex_state = EXPR_VALUE;
+          return '?';
   }
   c = nextc();
   if (c == -1) {
-      compile_error(PARSER_ARG "incomplete character syntax");
-      return 0;
+          compile_error(PARSER_ARG "incomplete character syntax");
+          return 0;
   }
   if (rb_enc_isspace(c, parser->enc)) {
-      if (!IS_ARG()) {
+          if (!IS_ARG()) {
     int c2 = 0;
     switch (c) {
-      case ' ':
+          case ' ':
         c2 = 's';
         break;
-      case '\n':
+          case '\n':
         c2 = 'n';
         break;
-      case '\t':
+          case '\t':
         c2 = 't';
         break;
-      case '\v':
+          case '\v':
         c2 = 'v';
         break;
-      case '\r':
+          case '\r':
         c2 = 'r';
         break;
-      case '\f':
+          case '\f':
         c2 = 'f';
         break;
     }
     if (c2) {
         rb_warnI("invalid character syntax; use ?\\%c", c2);
     }
-      }
+          }
     ternary:
-      pushback(c);
-      lex_state = EXPR_VALUE;
-      return '?';
+          pushback(c);
+          lex_state = EXPR_VALUE;
+          return '?';
   }
   newtok();
   enc = parser->enc;
   if (!parser_isascii()) {
-      if (tokadd_mbchar(c) == -1) return 0;
+          if (tokadd_mbchar(c) == -1) return 0;
   }
   else if ((rb_enc_isalnum(c, parser->enc) || c == '_') &&
      lex_p < lex_pend && is_identchar(lex_p, lex_pend, parser->enc)) {
-      goto ternary;
+          goto ternary;
   }
         else if (c == '\\') {
             if (peek('u')) {
@@ -4501,165 +4818,165 @@ parser_yylex(struct parser_params *parser)
             }
         }
         else {
-      tokadd(c);
+          tokadd(c);
         }
   tokfix();
   set_yylval_str(STR_NEW3(tok(), toklen(), enc, 0));
   lex_state = EXPR_END;
   return tCHAR;
 
-      case '&':
+          case '&':
   if ((c = nextc()) == '&') {
-      lex_state = EXPR_BEG;
-      if ((c = nextc()) == '=') {
+          lex_state = EXPR_BEG;
+          if ((c = nextc()) == '=') {
                 set_yylval_id(tANDOP);
     lex_state = EXPR_BEG;
     return tOP_ASGN;
-      }
-      pushback(c);
-      return tANDOP;
+          }
+          pushback(c);
+          return tANDOP;
   }
   else if (c == '=') {
             set_yylval_id('&');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   pushback(c);
   if (IS_SPCARG(c)) {
-      rb_warning0("`&' interpreted as argument prefix");
-      c = tAMPER;
+          rb_warning0("`&' interpreted as argument prefix");
+          c = tAMPER;
   }
   else if (IS_BEG()) {
-      c = tAMPER;
+          c = tAMPER;
   }
   else {
-      warn_balanced("&", "argument prefix");
-      c = '&';
+          warn_balanced("&", "argument prefix");
+          c = '&';
   }
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG;
+          lex_state = EXPR_BEG;
   }
   return c;
 
-      case '|':
+          case '|':
   if ((c = nextc()) == '|') {
-      lex_state = EXPR_BEG;
-      if ((c = nextc()) == '=') {
+          lex_state = EXPR_BEG;
+          if ((c = nextc()) == '=') {
                 set_yylval_id(tOROP);
     lex_state = EXPR_BEG;
     return tOP_ASGN;
-      }
-      pushback(c);
-      return tOROP;
+          }
+          pushback(c);
+          return tOROP;
   }
   if (c == '=') {
             set_yylval_id('|');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   if (lex_state == EXPR_FNAME || lex_state == EXPR_DOT) {
-      lex_state = EXPR_ARG;
+          lex_state = EXPR_ARG;
   }
   else {
-      lex_state = EXPR_BEG;
+          lex_state = EXPR_BEG;
   }
   pushback(c);
   return '|';
 
-      case '+':
+          case '+':
   c = nextc();
   if (lex_state == EXPR_FNAME || lex_state == EXPR_DOT) {
-      lex_state = EXPR_ARG;
-      if (c == '@') {
+          lex_state = EXPR_ARG;
+          if (c == '@') {
     return tUPLUS;
-      }
-      pushback(c);
-      return '+';
+          }
+          pushback(c);
+          return '+';
   }
   if (c == '=') {
             set_yylval_id('+');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   if (IS_BEG() || (IS_SPCARG(c) && arg_ambiguous())) {
-      lex_state = EXPR_BEG;
-      pushback(c);
-      if (c != -1 && ISDIGIT(c)) {
+          lex_state = EXPR_BEG;
+          pushback(c);
+          if (c != -1 && ISDIGIT(c)) {
     c = '+';
     goto start_num;
-      }
-      return tUPLUS;
+          }
+          return tUPLUS;
   }
   lex_state = EXPR_BEG;
   pushback(c);
   warn_balanced("+", "unary operator");
   return '+';
 
-      case '-':
+          case '-':
   c = nextc();
   if (lex_state == EXPR_FNAME || lex_state == EXPR_DOT) {
-      lex_state = EXPR_ARG;
-      if (c == '@') {
+          lex_state = EXPR_ARG;
+          if (c == '@') {
     return tUMINUS;
-      }
-      pushback(c);
-      return '-';
+          }
+          pushback(c);
+          return '-';
   }
   if (c == '=') {
             set_yylval_id('-');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   if (c == '>') {
-      lex_state = EXPR_ARG;
-      return tLAMBDA;
+          lex_state = EXPR_ARG;
+          return tLAMBDA;
   }
   if (IS_BEG() || (IS_SPCARG(c) && arg_ambiguous())) {
-      lex_state = EXPR_BEG;
-      pushback(c);
-      if (c != -1 && ISDIGIT(c)) {
+          lex_state = EXPR_BEG;
+          pushback(c);
+          if (c != -1 && ISDIGIT(c)) {
     return tUMINUS_NUM;
-      }
-      return tUMINUS;
+          }
+          return tUMINUS;
   }
   lex_state = EXPR_BEG;
   pushback(c);
   warn_balanced("-", "unary operator");
   return '-';
 
-      case '.':
+          case '.':
   lex_state = EXPR_BEG;
   if ((c = nextc()) == '.') {
-      if ((c = nextc()) == '.') {
+          if ((c = nextc()) == '.') {
     return tDOT3;
-      }
-      pushback(c);
-      return tDOT2;
+          }
+          pushback(c);
+          return tDOT2;
   }
   pushback(c);
   if (c != -1 && ISDIGIT(c)) {
-      yyerror("no .<digit> floating literal anymore; put 0 before dot");
+          yyerror("no .<digit> floating literal anymore; put 0 before dot");
   }
   lex_state = EXPR_DOT;
   return '.';
 
-      start_num:
-      case '0': case '1': case '2': case '3': case '4':
-      case '5': case '6': case '7': case '8': case '9':
+          start_num:
+          case '0': case '1': case '2': case '3': case '4':
+          case '5': case '6': case '7': case '8': case '9':
   {
-      int is_float, seen_point, seen_e, nondigit;
+          int is_float, seen_point, seen_e, nondigit;
 
-      is_float = seen_point = seen_e = nondigit = 0;
-      lex_state = EXPR_END;
-      newtok();
-      if (c == '-' || c == '+') {
+          is_float = seen_point = seen_e = nondigit = 0;
+          lex_state = EXPR_END;
+          newtok();
+          if (c == '-' || c == '+') {
     tokadd(c);
     c = nextc();
-      }
-      if (c == '0') {
+          }
+          if (c == '0') {
 #define no_digits() do {yyerror("numeric literal without digits"); return 0;} while (0)
     int start = toklen();
     c = nextc();
@@ -4667,7 +4984,7 @@ parser_yylex(struct parser_params *parser)
         /* hexadecimal */
         c = nextc();
         if (c != -1 && ISXDIGIT(c)) {
-      do {
+          do {
           if (c == '_') {
         if (nondigit) break;
         nondigit = c;
@@ -4676,12 +4993,12 @@ parser_yylex(struct parser_params *parser)
           if (!ISXDIGIT(c)) break;
           nondigit = 0;
           tokadd(c);
-      } while ((c = nextc()) != -1);
+          } while ((c = nextc()) != -1);
         }
         pushback(c);
         tokfix();
         if (toklen() == start) {
-      no_digits();
+          no_digits();
         }
         else if (nondigit) goto trailing_uc;
         set_yylval_literal(rb_cstr_to_inum(tok(), 16, FALSE));
@@ -4691,7 +5008,7 @@ parser_yylex(struct parser_params *parser)
         /* binary */
         c = nextc();
         if (c == '0' || c == '1') {
-      do {
+          do {
           if (c == '_') {
         if (nondigit) break;
         nondigit = c;
@@ -4700,12 +5017,12 @@ parser_yylex(struct parser_params *parser)
           if (c != '0' && c != '1') break;
           nondigit = 0;
           tokadd(c);
-      } while ((c = nextc()) != -1);
+          } while ((c = nextc()) != -1);
         }
         pushback(c);
         tokfix();
         if (toklen() == start) {
-      no_digits();
+          no_digits();
         }
         else if (nondigit) goto trailing_uc;
         set_yylval_literal(rb_cstr_to_inum(tok(), 2, FALSE));
@@ -4715,7 +5032,7 @@ parser_yylex(struct parser_params *parser)
         /* decimal */
         c = nextc();
         if (c != -1 && ISDIGIT(c)) {
-      do {
+          do {
           if (c == '_') {
         if (nondigit) break;
         nondigit = c;
@@ -4724,12 +5041,12 @@ parser_yylex(struct parser_params *parser)
           if (!ISDIGIT(c)) break;
           nondigit = 0;
           tokadd(c);
-      } while ((c = nextc()) != -1);
+          } while ((c = nextc()) != -1);
         }
         pushback(c);
         tokfix();
         if (toklen() == start) {
-      no_digits();
+          no_digits();
         }
         else if (nondigit) goto trailing_uc;
         set_yylval_literal(rb_cstr_to_inum(tok(), 10, FALSE));
@@ -4743,37 +5060,37 @@ parser_yylex(struct parser_params *parser)
         /* prefixed octal */
         c = nextc();
         if (c == -1 || c == '_' || !ISDIGIT(c)) {
-      no_digits();
+          no_digits();
         }
     }
     if (c >= '0' && c <= '7') {
         /* octal */
-      octal_number:
+          octal_number:
               do {
-      if (c == '_') {
+          if (c == '_') {
           if (nondigit) break;
           nondigit = c;
           continue;
-      }
-      if (c < '0' || c > '9') break;
-      if (c > '7') goto invalid_octal;
-      nondigit = 0;
-      tokadd(c);
+          }
+          if (c < '0' || c > '9') break;
+          if (c > '7') goto invalid_octal;
+          nondigit = 0;
+          tokadd(c);
         } while ((c = nextc()) != -1);
         if (toklen() > start) {
-      pushback(c);
-      tokfix();
-      if (nondigit) goto trailing_uc;
-      set_yylval_literal(rb_cstr_to_inum(tok(), 8, FALSE));
-      return tINTEGER;
+          pushback(c);
+          tokfix();
+          if (nondigit) goto trailing_uc;
+          set_yylval_literal(rb_cstr_to_inum(tok(), 8, FALSE));
+          return tINTEGER;
         }
         if (nondigit) {
-      pushback(c);
-      goto trailing_uc;
+          pushback(c);
+          goto trailing_uc;
         }
     }
     if (c > '7' && c <= '9') {
-      invalid_octal:
+          invalid_octal:
         yyerror("Invalid octal digit");
     }
     else if (c == '.' || c == 'e' || c == 'E') {
@@ -4784,28 +5101,28 @@ parser_yylex(struct parser_params *parser)
                     set_yylval_literal(INT2FIX(0));
         return tINTEGER;
     }
-      }
+          }
 
-      for (;;) {
+          for (;;) {
     switch (c) {
-      case '0': case '1': case '2': case '3': case '4':
-      case '5': case '6': case '7': case '8': case '9':
+          case '0': case '1': case '2': case '3': case '4':
+          case '5': case '6': case '7': case '8': case '9':
         nondigit = 0;
         tokadd(c);
         break;
 
-      case '.':
+          case '.':
         if (nondigit) goto trailing_uc;
         if (seen_point || seen_e) {
-      goto decode_num;
+          goto decode_num;
         }
         else {
-      int c0 = nextc();
-      if (c0 == -1 || !ISDIGIT(c0)) {
+          int c0 = nextc();
+          if (c0 == -1 || !ISDIGIT(c0)) {
           pushback(c0);
           goto decode_num;
-      }
-      c = c0;
+          }
+          c = c0;
         }
         tokadd('.');
         tokadd(c);
@@ -4814,15 +5131,15 @@ parser_yylex(struct parser_params *parser)
         nondigit = 0;
         break;
 
-      case 'e':
-      case 'E':
+          case 'e':
+          case 'E':
         if (nondigit) {
-      pushback(c);
-      c = nondigit;
-      goto decode_num;
+          pushback(c);
+          c = nondigit;
+          goto decode_num;
         }
         if (seen_e) {
-      goto decode_num;
+          goto decode_num;
         }
         tokadd(c);
         seen_e++;
@@ -4834,27 +5151,27 @@ parser_yylex(struct parser_params *parser)
         nondigit = c;
         break;
 
-      case '_': /* `_' in number just ignored */
+          case '_': /* `_' in number just ignored */
         if (nondigit) goto decode_num;
         nondigit = c;
         break;
 
-      default:
+          default:
         goto decode_num;
     }
     c = nextc();
-      }
+          }
 
     decode_num:
-      pushback(c);
-      if (nondigit) {
+          pushback(c);
+          if (nondigit) {
     char tmp[30];
         trailing_uc:
     snprintf(tmp, sizeof(tmp), "trailing `%c' in number", nondigit);
     yyerror(tmp);
-      }
-      tokfix();
-      if (is_float) {
+          }
+          tokfix();
+          if (is_float) {
     double d = strtod(tok(), 0);
     if (errno == ERANGE) {
         rb_warningS("Float %s out of range", tok());
@@ -4862,120 +5179,120 @@ parser_yylex(struct parser_params *parser)
     }
                 set_yylval_literal(DBL2NUM(d));
     return tFLOAT;
-      }
-      set_yylval_literal(rb_cstr_to_inum(tok(), 10, FALSE));
-      return tINTEGER;
+          }
+          set_yylval_literal(rb_cstr_to_inum(tok(), 10, FALSE));
+          return tINTEGER;
   }
 
-      case ')':
-      case ']':
+          case ')':
+          case ']':
   paren_nest--;
-      case '}':
+          case '}':
   COND_LEXPOP();
   CMDARG_LEXPOP();
   if (c == ')')
-      lex_state = EXPR_ENDFN;
+          lex_state = EXPR_ENDFN;
   else
-      lex_state = EXPR_ENDARG;
+          lex_state = EXPR_ENDARG;
   return c;
 
-      case ':':
+          case ':':
   c = nextc();
   if (c == ':') {
-      if (IS_BEG() || lex_state == EXPR_CLASS || IS_SPCARG(-1)) {
+          if (IS_BEG() || lex_state == EXPR_CLASS || IS_SPCARG(-1)) {
     lex_state = EXPR_BEG;
     return tCOLON3;
-      }
-      lex_state = EXPR_DOT;
-      return tCOLON2;
+          }
+          lex_state = EXPR_DOT;
+          return tCOLON2;
   }
   if (IS_END() || ISSPACE(c)) {
-      pushback(c);
-      warn_balanced(":", "symbol literal");
-      lex_state = EXPR_BEG;
-      return ':';
+          pushback(c);
+          warn_balanced(":", "symbol literal");
+          lex_state = EXPR_BEG;
+          return ':';
   }
   switch (c) {
     case '\'':
-      lex_strterm = NEW_STRTERM(str_ssym, c, 0);
-      break;
+          lex_strterm = NEW_STRTERM(str_ssym, c, 0);
+          break;
     case '"':
-      lex_strterm = NEW_STRTERM(str_dsym, c, 0);
-      break;
+          lex_strterm = NEW_STRTERM(str_dsym, c, 0);
+          break;
     default:
-      pushback(c);
-      break;
+          pushback(c);
+          break;
   }
   lex_state = EXPR_FNAME;
   return tSYMBEG;
 
-      case '/':
+          case '/':
   if (IS_BEG()) {
-      lex_strterm = NEW_STRTERM(str_regexp, '/', 0);
-      return tREGEXP_BEG;
+          lex_strterm = NEW_STRTERM(str_regexp, '/', 0);
+          return tREGEXP_BEG;
   }
   if ((c = nextc()) == '=') {
             set_yylval_id('/');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   pushback(c);
   if (IS_SPCARG(c)) {
-      (void)arg_ambiguous();
-      lex_strterm = NEW_STRTERM(str_regexp, '/', 0);
-      return tREGEXP_BEG;
+          (void)arg_ambiguous();
+          lex_strterm = NEW_STRTERM(str_regexp, '/', 0);
+          return tREGEXP_BEG;
   }
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   warn_balanced("/", "regexp literal");
   return '/';
 
-      case '^':
+          case '^':
   if ((c = nextc()) == '=') {
             set_yylval_id('^');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   pushback(c);
   return '^';
 
-      case ';':
+          case ';':
   lex_state = EXPR_BEG;
   command_start = TRUE;
   return ';';
 
-      case ',':
+          case ',':
   lex_state = EXPR_BEG;
   return ',';
 
-      case '~':
+          case '~':
   if (lex_state == EXPR_FNAME || lex_state == EXPR_DOT) {
-      if ((c = nextc()) != '@') {
+          if ((c = nextc()) != '@') {
     pushback(c);
-      }
-      lex_state = EXPR_ARG;
+          }
+          lex_state = EXPR_ARG;
   }
   else {
-      lex_state = EXPR_BEG;
+          lex_state = EXPR_BEG;
   }
   return '~';
 
-      case '(':
+          case '(':
   if (IS_BEG()) {
-      c = tLPAREN;
+          c = tLPAREN;
   }
   else if (IS_SPCARG(-1)) {
-      c = tLPAREN_ARG;
+          c = tLPAREN_ARG;
   }
   paren_nest++;
   COND_PUSH(0);
@@ -4983,92 +5300,92 @@ parser_yylex(struct parser_params *parser)
   lex_state = EXPR_BEG;
   return c;
 
-      case '[':
+          case '[':
   paren_nest++;
   if (lex_state == EXPR_FNAME || lex_state == EXPR_DOT) {
-      lex_state = EXPR_ARG;
-      if ((c = nextc()) == ']') {
+          lex_state = EXPR_ARG;
+          if ((c = nextc()) == ']') {
     if ((c = nextc()) == '=') {
         return tASET;
     }
     pushback(c);
     return tAREF;
-      }
-      pushback(c);
-      return '[';
+          }
+          pushback(c);
+          return '[';
   }
   else if (IS_BEG()) {
-      c = tLBRACK;
+          c = tLBRACK;
   }
   else if (IS_ARG() && space_seen) {
-      c = tLBRACK;
+          c = tLBRACK;
   }
   lex_state = EXPR_BEG;
   COND_PUSH(0);
   CMDARG_PUSH(0);
   return c;
 
-      case '{':
+          case '{':
   if (lpar_beg && lpar_beg == paren_nest) {
-      lex_state = EXPR_BEG;
-      lpar_beg = 0;
-      --paren_nest;
-      COND_PUSH(0);
-      CMDARG_PUSH(0);
-      return tLAMBEG;
+          lex_state = EXPR_BEG;
+          lpar_beg = 0;
+          --paren_nest;
+          COND_PUSH(0);
+          CMDARG_PUSH(0);
+          return tLAMBEG;
   }
   if (IS_ARG() || lex_state == EXPR_END || lex_state == EXPR_ENDFN)
-      c = '{';          /* block (primary) */
+          c = '{';          /* block (primary) */
   else if (lex_state == EXPR_ENDARG)
-      c = tLBRACE_ARG;  /* block (expr) */
+          c = tLBRACE_ARG;  /* block (expr) */
   else
-      c = tLBRACE;      /* hash */
+          c = tLBRACE;      /* hash */
   COND_PUSH(0);
   CMDARG_PUSH(0);
   lex_state = EXPR_BEG;
   if (c != tLBRACE) command_start = TRUE;
   return c;
 
-      case '\\':
+          case '\\':
   c = nextc();
   if (c == '\n') {
-      space_seen = 1;
-      redtree_dispatch_scan_event(parser, tSP);
-      goto retry; /* skip \\n */
+          space_seen = 1;
+          // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tSP);
+          goto retry; /* skip \\n */
   }
   pushback(c);
   return '\\';
 
-      case '%':
+          case '%':
   if (IS_BEG()) {
-      int term;
-      int paren;
+          int term;
+          int paren;
 
-      c = nextc();
+          c = nextc();
     quotation:
-      if (c == -1 || !ISALNUM(c)) {
+          if (c == -1 || !ISALNUM(c)) {
     term = c;
     c = 'Q';
-      }
-      else {
+          }
+          else {
     term = nextc();
     if (rb_enc_isalnum(term, parser->enc) || !parser_isascii()) {
         yyerror("unknown type of %string");
         return 0;
     }
-      }
-      if (c == -1 || term == -1) {
+          }
+          if (c == -1 || term == -1) {
     compile_error(PARSER_ARG "unterminated quoted string meets end of file");
     return 0;
-      }
-      paren = term;
-      if (term == '(') term = ')';
-      else if (term == '[') term = ']';
-      else if (term == '{') term = '}';
-      else if (term == '<') term = '>';
-      else paren = 0;
+          }
+          paren = term;
+          if (term == '(') term = ')';
+          else if (term == '[') term = ']';
+          else if (term == '{') term = '}';
+          else if (term == '<') term = '>';
+          else paren = 0;
 
-      switch (c) {
+          switch (c) {
         case 'Q':
     lex_strterm = NEW_STRTERM(str_dquote, term, paren);
     return tSTRING_BEG;
@@ -5105,41 +5422,41 @@ parser_yylex(struct parser_params *parser)
         default:
     yyerror("unknown type of %string");
     return 0;
-      }
+          }
   }
   if ((c = nextc()) == '=') {
             set_yylval_id('%');
-      lex_state = EXPR_BEG;
-      return tOP_ASGN;
+          lex_state = EXPR_BEG;
+          return tOP_ASGN;
   }
   if (IS_SPCARG(c)) {
-      goto quotation;
+          goto quotation;
   }
   switch (lex_state) {
     case EXPR_FNAME: case EXPR_DOT:
-      lex_state = EXPR_ARG; break;
+          lex_state = EXPR_ARG; break;
     default:
-      lex_state = EXPR_BEG; break;
+          lex_state = EXPR_BEG; break;
   }
   pushback(c);
   warn_balanced("%%", "string literal");
   return '%';
 
-      case '$':
+          case '$':
   lex_state = EXPR_END;
   newtok();
   c = nextc();
   switch (c) {
     case '_':   /* $_: last read line string */
-      c = nextc();
-      if (parser_is_identchar()) {
+          c = nextc();
+          if (parser_is_identchar()) {
     tokadd('$');
     tokadd('_');
     break;
-      }
-      pushback(c);
-      c = '_';
-      /* fall through */
+          }
+          pushback(c);
+          c = '_';
+          /* fall through */
     case '~':   /* $~: match-data */
     case '*':   /* $*: argv */
     case '$':   /* $$: pid */
@@ -5156,101 +5473,101 @@ parser_yylex(struct parser_params *parser)
     case '<':   /* $<: reading filename */
     case '>':   /* $>: default output handle */
     case '\"':    /* $": already loaded files */
-      tokadd('$');
-      tokadd(c);
-      tokfix();
-      set_yylval_name(rb_intern(tok()));
-      return tGVAR;
+          tokadd('$');
+          tokadd(c);
+          tokfix();
+          set_yylval_name(rb_intern(tok()));
+          return tGVAR;
 
     case '-':
-      tokadd('$');
-      tokadd(c);
-      c = nextc();
-      if (parser_is_identchar()) {
+          tokadd('$');
+          tokadd(c);
+          c = nextc();
+          if (parser_is_identchar()) {
     if (tokadd_mbchar(c) == -1) return 0;
-      }
-      else {
+          }
+          else {
     pushback(c);
-      }
+          }
     gvar:
-      tokfix();
-      set_yylval_name(rb_intern(tok()));
-      return tGVAR;
+          tokfix();
+          set_yylval_name(rb_intern(tok()));
+          return tGVAR;
 
     case '&':   /* $&: last match */
     case '`':   /* $`: string before last match */
     case '\'':    /* $': string after last match */
     case '+':   /* $+: string matches last paren. */
-      if (last_state == EXPR_FNAME) {
+          if (last_state == EXPR_FNAME) {
     tokadd('$');
     tokadd(c);
     goto gvar;
-      }
-      set_yylval_node(NEW_BACK_REF(c));
-      return tBACK_REF;
+          }
+          set_yylval_node(NEW_BACK_REF(c));
+          return tBACK_REF;
 
     case '1': case '2': case '3':
     case '4': case '5': case '6':
     case '7': case '8': case '9':
-      tokadd('$');
-      do {
+          tokadd('$');
+          do {
     tokadd(c);
     c = nextc();
-      } while (c != -1 && ISDIGIT(c));
-      pushback(c);
-      if (last_state == EXPR_FNAME) goto gvar;
-      tokfix();
-      set_yylval_node(NEW_NTH_REF(atoi(tok()+1)));
-      return tNTH_REF;
+          } while (c != -1 && ISDIGIT(c));
+          pushback(c);
+          if (last_state == EXPR_FNAME) goto gvar;
+          tokfix();
+          set_yylval_node(NEW_NTH_REF(atoi(tok()+1)));
+          return tNTH_REF;
 
     default:
-      if (!parser_is_identchar()) {
+          if (!parser_is_identchar()) {
     pushback(c);
     return '$';
-      }
+          }
     case '0':
-      tokadd('$');
+          tokadd('$');
   }
   break;
 
-      case '@':
+          case '@':
   c = nextc();
   newtok();
   tokadd('@');
   if (c == '@') {
-      tokadd('@');
-      c = nextc();
+          tokadd('@');
+          c = nextc();
   }
   if (c != -1 && ISDIGIT(c)) {
-      if (tokidx == 1) {
+          if (tokidx == 1) {
     compile_error(PARSER_ARG "`@%c' is not allowed as an instance variable name", c);
-      }
-      else {
+          }
+          else {
     compile_error(PARSER_ARG "`@@%c' is not allowed as a class variable name", c);
-      }
-      return 0;
+          }
+          return 0;
   }
   if (!parser_is_identchar()) {
-      pushback(c);
-      return '@';
+          pushback(c);
+          return '@';
   }
   break;
 
-      case '_':
+          case '_':
   if (was_bol() && whole_match_p("__END__", 7, 0)) {
-      ruby__end__seen = 1;
-      parser->eofp = Qtrue;
+          ruby__end__seen = 1;
+          parser->eofp = Qtrue;
             lex_goto_eol(parser);
-            redtree_dispatch_scan_event(parser, k__END__);
+            // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, k__END__);
             return 0;
   }
   newtok();
   break;
 
-      default:
+          default:
   if (!parser_is_identchar()) {
-      rb_compile_error(PARSER_ARG  "Invalid char `\\x%02X' in expression", c);
-      goto retry;
+          rb_compile_error(PARSER_ARG  "Invalid char `\\x%02X' in expression", c);
+          goto retry;
   }
 
   newtok();
@@ -5264,15 +5581,15 @@ parser_yylex(struct parser_params *parser)
   c = nextc();
     } while (parser_is_identchar());
     switch (tok()[0]) {
-      case '@': case '$':
+          case '@': case '$':
   pushback(c);
   break;
-      default:
+          default:
   if ((c == '!' || c == '?') && !peek('=')) {
-      tokadd(c);
+          tokadd(c);
   }
   else {
-      pushback(c);
+          pushback(c);
   }
     }
     tokfix();
@@ -5283,31 +5600,31 @@ parser_yylex(struct parser_params *parser)
   last_state = lex_state;
   switch (tok()[0]) {
     case '$':
-      lex_state = EXPR_END;
-      result = tGVAR;
-      break;
+          lex_state = EXPR_END;
+          result = tGVAR;
+          break;
     case '@':
-      lex_state = EXPR_END;
-      if (tok()[1] == '@')
+          lex_state = EXPR_END;
+          if (tok()[1] == '@')
     result = tCVAR;
-      else
+          else
     result = tIVAR;
-      break;
+          break;
 
     default:
-      if (toklast() == '!' || toklast() == '?') {
+          if (toklast() == '!' || toklast() == '?') {
     result = tFID;
-      }
-      else {
+          }
+          else {
     if (lex_state == EXPR_FNAME) {
         if ((c = nextc()) == '=' && !peek('~') && !peek('>') &&
-      (!peek('=') || (peek_n('>', 1)))) {
-      result = tIDENTIFIER;
-      tokadd(c);
-      tokfix();
+          (!peek('=') || (peek_n('>', 1)))) {
+          result = tIDENTIFIER;
+          tokadd(c);
+          tokfix();
         }
         else {
-      pushback(c);
+          pushback(c);
         }
     }
     if (result == 0 && ISUPPER(tok()[0])) {
@@ -5316,17 +5633,17 @@ parser_yylex(struct parser_params *parser)
     else {
         result = tIDENTIFIER;
     }
-      }
+          }
 
-      if (IS_LABEL_POSSIBLE()) {
+          if (IS_LABEL_POSSIBLE()) {
     if (IS_LABEL_SUFFIX(0)) {
         lex_state = EXPR_BEG;
         nextc();
         set_yylval_name(TOK_INTERN(!ENC_SINGLE(mb)));
         return tLABEL;
     }
-      }
-      if (mb == ENC_CODERANGE_7BIT && lex_state != EXPR_DOT) {
+          }
+          if (mb == ENC_CODERANGE_7BIT && lex_state != EXPR_DOT) {
     const struct kwtable *kw;
 
     /* See if it is a reserved word.  */
@@ -5335,34 +5652,34 @@ parser_yylex(struct parser_params *parser)
         enum lex_state_e state = lex_state;
         lex_state = kw->state;
         if (state == EXPR_FNAME) {
-      set_yylval_name(rb_intern(kw->name));
-      return kw->id[0];
+          set_yylval_name(rb_intern(kw->name));
+          return kw->id[0];
         }
         if (kw->id[0] == keyword_do) {
-      command_start = TRUE;
-      if (lpar_beg && lpar_beg == paren_nest) {
+          command_start = TRUE;
+          if (lpar_beg && lpar_beg == paren_nest) {
           lpar_beg = 0;
           --paren_nest;
           return keyword_do_LAMBDA;
-      }
-      if (COND_P()) return keyword_do_cond;
-      if (CMDARG_P() && state != EXPR_CMDARG)
+          }
+          if (COND_P()) return keyword_do_cond;
+          if (CMDARG_P() && state != EXPR_CMDARG)
           return keyword_do_block;
-      if (state == EXPR_ENDARG || state == EXPR_BEG)
+          if (state == EXPR_ENDARG || state == EXPR_BEG)
           return keyword_do_block;
-      return keyword_do;
+          return keyword_do;
         }
         if (state == EXPR_BEG || state == EXPR_VALUE)
-      return kw->id[0];
+          return kw->id[0];
         else {
-      if (kw->id[0] != kw->id[1])
+          if (kw->id[0] != kw->id[1])
           lex_state = EXPR_BEG;
-      return kw->id[1];
+          return kw->id[1];
         }
     }
-      }
+          }
 
-      if (IS_BEG() ||
+          if (IS_BEG() ||
     lex_state == EXPR_DOT ||
     IS_ARG()) {
     if (cmd_state) {
@@ -5371,13 +5688,13 @@ parser_yylex(struct parser_params *parser)
     else {
         lex_state = EXPR_ARG;
     }
-      }
-      else if (lex_state == EXPR_FNAME) {
+          }
+          else if (lex_state == EXPR_FNAME) {
     lex_state = EXPR_ENDFN;
-      }
-      else {
+          }
+          else {
     lex_state = EXPR_END;
-      }
+          }
   }
         {
             ID ident = TOK_INTERN(!ENC_SINGLE(mb));
@@ -5406,13 +5723,15 @@ yylex(void *p)
     parser->parser_yylval->val = Qundef;
 #endif
     t = parser_yylex(parser);
+
+    redtree_lex_token(parser->parse_tree, t, 0, 0, 0, 0);
     if (!NIL_P(parser->delayed)) {
-  redtree_dispatch_delayed_token(parser, t);
+  // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, t);
   return t;
     }
-    if (t != 0)
-  redtree_dispatch_scan_event(parser, t);
-
+    if (t != 0) {
+  // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, t);
+    }
     return t;
 }
 
@@ -5422,12 +5741,12 @@ id_is_var_gen(struct parser_params *parser, ID id)
     if (is_notop_id(id)) {
   switch (id & ID_SCOPE_MASK) {
     case ID_GLOBAL: case ID_INSTANCE: case ID_CONST: case ID_CLASS:
-      return 1;
+          return 1;
     case ID_LOCAL:
-      if (dyna_in_block() && dvar_defined(id)) return 1;
-      if (local_id(id)) return 1;
-      /* method call without arguments */
-      return 0;
+          if (dyna_in_block() && dvar_defined(id)) return 1;
+          if (local_id(id)) return 1;
+          /* method call without arguments */
+          return 0;
   }
     }
     compile_error(PARSER_ARG "identifier %s is not valid to get", rb_id2name(id));
@@ -5439,7 +5758,6 @@ assignable_gen(struct parser_params *parser, VALUE lhs)
 {
     ID id = get_id(lhs);
 # define assignable_result(x) get_value(lhs)
-# define parser_yyerror(parser, x) dispatch1(assign_error, lhs)
     if (!id) return assignable_result(0);
     if (id == keyword_self) {
   yyerror("Can't change the value of self");
@@ -5464,25 +5782,25 @@ assignable_gen(struct parser_params *parser, VALUE lhs)
     }
     else if (is_local_id(id)) {
   if (dyna_in_block()) {
-      if (dvar_curr(id)) {
+          if (dvar_curr(id)) {
     return assignable_result(NEW_DASGN_CURR(id, val));
-      }
-      else if (dvar_defined(id)) {
+          }
+          else if (dvar_defined(id)) {
     return assignable_result(NEW_DASGN(id, val));
-      }
-      else if (local_id(id)) {
+          }
+          else if (local_id(id)) {
     return assignable_result(NEW_LASGN(id, val));
-      }
-      else {
+          }
+          else {
     dyna_var(id);
     return assignable_result(NEW_DASGN_CURR(id, val));
-      }
+          }
   }
   else {
-      if (!local_id(id)) {
+          if (!local_id(id)) {
     local_var(id);
-      }
-      return assignable_result(NEW_LASGN(id, val));
+          }
+          return assignable_result(NEW_LASGN(id, val));
   }
     }
     else if (is_global_id(id)) {
@@ -5493,7 +5811,7 @@ assignable_gen(struct parser_params *parser, VALUE lhs)
     }
     else if (is_const_id(id)) {
   if (!in_def && !in_single)
-      return assignable_result(NEW_CDECL(id, val, 0));
+          return assignable_result(NEW_CDECL(id, val, 0));
   yyerror("dynamic constant assignment");
     }
     else if (is_class_id(id)) {
@@ -5504,7 +5822,6 @@ assignable_gen(struct parser_params *parser, VALUE lhs)
     }
     return assignable_result(0);
 #undef assignable_result
-#undef parser_yyerror
 }
 
 #define LVAR_USED ((int)1 << (sizeof(int) * CHAR_BIT - 1))
@@ -5515,19 +5832,19 @@ shadowing_lvar_gen(struct parser_params *parser, ID name)
     if (idUScore == name) return name;
     if (dyna_in_block()) {
   if (dvar_curr(name)) {
-      yyerror("duplicated argument name");
+          yyerror("duplicated argument name");
   }
   else if (dvar_defined_get(name) || local_id(name)) {
-      rb_warningS("shadowing outer local variable - %s", rb_id2name(name));
-      vtable_add(lvtbl->vars, name);
-      if (lvtbl->used) {
+          rb_warningS("shadowing outer local variable - %s", rb_id2name(name));
+          vtable_add(lvtbl->vars, name);
+          if (lvtbl->used) {
     vtable_add(lvtbl->used, (ID)ruby_sourceline | LVAR_USED);
-      }
+          }
   }
     }
     else {
   if (local_id(name)) {
-      yyerror("duplicated argument name");
+          yyerror("duplicated argument name");
   }
     }
     return name;
@@ -5673,9 +5990,9 @@ dyna_pop_gen(struct parser_params *parser, const struct vtable *lvargs)
     while (lvtbl->args != lvargs) {
   dyna_pop_1(parser);
   if (!lvtbl->args) {
-      struct local_vars *local = lvtbl->prev;
-      xfree(lvtbl);
-      lvtbl = local;
+          struct local_vars *local = lvtbl->prev;
+          xfree(lvtbl);
+          lvtbl = local;
   }
     }
     dyna_pop_1(parser);
@@ -5699,11 +6016,11 @@ dvar_defined_gen(struct parser_params *parser, ID id, int get)
 
     while (POINTER_P(vars)) {
   if (vtable_included(args, id)) {
-      return 1;
+          return 1;
   }
   if ((i = vtable_included(vars, id)) != 0) {
-      if (used) used->tbl[i-1] |= LVAR_USED;
-      return 1;
+          if (used) used->tbl[i-1] |= LVAR_USED;
+          return 1;
   }
   args = args->prev;
   vars = vars->prev;
@@ -5722,7 +6039,7 @@ static int
 dvar_curr_gen(struct parser_params *parser, ID id)
 {
     return (vtable_included(lvtbl->args, id) ||
-      vtable_included(lvtbl->vars, id));
+          vtable_included(lvtbl->vars, id));
 }
 
 static ID
@@ -5769,6 +6086,8 @@ parser_initialize(struct parser_params *parser)
     parser->result = Qnil;
     parser->parsing_thread = Qnil;
     parser->toplevel_p = TRUE;
+    parser->parse_tree = redtree_allocate();
+    parser->redtree_stack = new_redtree_stack();
 #ifdef YYMALLOC
     parser->heap = NULL;
 #endif
@@ -5831,16 +6150,29 @@ parser_memsize(const void *ptr)
     return size;
 }
 
-static const rb_data_type_t parser_data_type = {
-    "parser",
-    {
-  parser_mark,
-  parser_free,
-  parser_memsize,
-    },
+static const rb_data_type_t parser_data_type =  {"parser",
+    parser_mark, parser_free, parser_memsize,
 };
 
 #define validate(x) ((x) = get_value(x))
+
+static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, int rhs_size) {
+  // prepare pattern value
+  int32_t pattern = 0;
+  // look up size of rhs to pop from parser->redtree_stack
+  // unsigned int rhs_size = yyr2[yyn];
+  // pop from stack TODO(adgar): make volatile for speed
+  int32_t* popped = redtree_stack_pop_n(parser, rhs_size);
+  // for each on RHS
+  while (rhs_size--) {
+    int32_t val = *(popped + rhs_size);
+    redtree_sequence_push(parser->parse_tree, *popped + rhs_size);
+    pattern |= (0x3 & (val < 0));
+  }
+  redtree_sequence_push(parser->parse_tree, pattern);
+  redtree_sequence_push(parser->parse_tree, -redtree_rule_num);
+  redtree_stack_push(parser, -redtree_rule_num);
+}
 
 static VALUE
 redtree_dispatch0(struct parser_params *parser, ID mid)
@@ -5976,13 +6308,13 @@ redtree_id2sym(ID id)
         return ID2SYM(rb_intern(name));
     }
     switch (id) {
-      case tOROP:
+          case tOROP:
         name = "||";
         break;
-      case tANDOP:
+          case tANDOP:
         name = "&&";
         break;
-      default:
+          default:
         name = rb_id2name(id);
         if (!name) {
             rb_bug("cannot convert ID to string: %ld", (unsigned long)id);
@@ -6106,6 +6438,7 @@ redtree_initialize(int argc, VALUE *argv, VALUE self)
         StringValue(fname);
     }
     parser_initialize(parser);
+    redtree_init_struct(parser->parse_tree, src);
 
     parser->parser_ruby_sourcefile_string = fname;
     parser->parser_ruby_sourcefile = RSTRING_PTR(fname);
@@ -6228,6 +6561,37 @@ redtree_lineno(VALUE self)
     return INT2NUM(parser->parser_ruby_sourceline);
 }
 
+/*
+ *  call-seq:
+ *    redtree.yydebug   -> true or false
+ *
+ *  Get yydebug.
+ */
+VALUE
+rb_parser_get_yydebug(VALUE self)
+{
+    struct parser_params *parser;
+
+    TypedData_Get_Struct(self, struct parser_params, &parser_data_type, parser);
+    return yydebug ? Qtrue : Qfalse;
+}
+
+/*
+ *  call-seq:
+ *    redtree.yydebug = flag
+ *
+ *  Set yydebug.
+ */
+VALUE
+rb_parser_set_yydebug(VALUE self, VALUE flag)
+{
+    struct parser_params *parser;
+
+    TypedData_Get_Struct(self, struct parser_params, &parser_data_type, parser);
+    yydebug = RTEST(flag);
+    return flag;
+}
+
 void
 Init_redtree(void)
 {
@@ -6248,7 +6612,6 @@ Init_redtree(void)
 
     redtree_id_gets = rb_intern("gets");
     redtree_init_eventids1(Redtree);
-    redtree_init_eventids2(Redtree);
     /* ensure existing in symbol table */
     (void)rb_intern("||");
     (void)rb_intern("&&");

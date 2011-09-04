@@ -1,0 +1,7 @@
+ext/redtree/*.o
+ext/redtree/*.bundle
+ext/redtree/*.so
+ext/redtree/*.dll
+ext/redtree/redtree.tab.c
+ext/redtree/Makefile
+ext/redtree/y.output
