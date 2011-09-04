@@ -1,6 +1,5 @@
 enum redtree_ids {
   redtree_rulenum_UNUSED,
-  redtree_rulenum_struct,
   redtree_rulenum_program__top_compstmt,
   redtree_rulenum_top_compstmt__top_stmts__opt_terms,
   redtree_rulenum_top_stmts__none,
@@ -551,8 +550,6 @@ redtree_init_eventids1(VALUE self) {
   rb_define_const(self, "Names", arr);
   rb_define_const(self, "UNUSED", INT2FIX(redtree_rulenum_UNUSED));
   rb_ary_push(arr, rb_str_new("UNUSED", 6));
-  rb_define_const(self, "Struct", INT2FIX(redtree_rulenum_struct));
-  rb_ary_push(arr, rb_str_new("Struct", 6));
   rb_define_const(self, "Program_TopCompstmt", INT2FIX(redtree_rulenum_program__top_compstmt));
   rb_ary_push(arr, rb_str_new("Program_TopCompstmt", 19));
   rb_define_const(self, "TopCompstmt_TopStmts_OptTerms", INT2FIX(redtree_rulenum_top_compstmt__top_stmts__opt_terms));
