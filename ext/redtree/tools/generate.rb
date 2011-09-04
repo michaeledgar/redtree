@@ -64,21 +64,22 @@ def constant_name_for_id(id)
 end
 
 def generate_eventids1(ids)
-  buf = "enum redtree_ids {\n"
+  buf  = "VALUE rb_mNodes;\n"
+  buf << "enum redtree_ids {\n"
   ids.each do |id|
     buf << "  redtree_rulenum_#{id},\n"
   end
   buf << "};\n\n"
   buf << "static void\n"
   buf << "redtree_init_eventids1(VALUE self) {\n"
-  buf << %Q[  VALUE arr = rb_ary_new2(redtree_rulenum_MAX_RULES);\n]
-  buf << %Q[  VALUE nodes_module = rb_define_module_under(self, "Nodes");\n]
-  buf << %Q[  rb_define_const(self, "Names", arr);\n]
+  buf << %Q[  rb_aNames = rb_ary_new2(redtree_rulenum_MAX_RULES);\n]
+  buf << %Q[  rb_mNodes = rb_define_module_under(self, "Nodes");\n]
+  buf << %Q[  rb_define_const(rb_mNodes, "NAMES", rb_aNames);\n]
 
   ids.each do |id|
     constant_name = constant_name_for_id(id)
-    buf << %Q[  rb_define_const(self, "#{constant_name}", INT2FIX(redtree_rulenum_#{id}));\n]
-    buf << %Q[  rb_ary_push(arr, rb_str_new("#{constant_name}", #{constant_name.size}));\n]
+    buf << %Q[  rb_define_const(rb_mNodes, "#{constant_name}", INT2FIX(redtree_rulenum_#{id}));\n]
+    buf << %Q[  rb_ary_push(rb_aNames, rb_str_new("#{constant_name}", #{constant_name.size}));\n]
   end
 
   buf << "}\n"

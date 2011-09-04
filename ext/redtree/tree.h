@@ -32,7 +32,15 @@ void redtree_shift_token(struct redtree* tree, uint32_t token_index);
 void redtree_reduce_rule(struct redtree* tree, uint32_t rule_index);
 void redtree_sequence_push(struct redtree* tree, int32_t entry);
 
-VALUE rb_tree_wrap(VALUE klass, struct redtree* tree);
-VALUE rb_tree_sequence(VALUE wrapped);
+VALUE redtree_wrap(VALUE klass, struct redtree* tree);
+VALUE redtree_sequence(VALUE self);
+VALUE redtree_root(VALUE self);
+
+struct redtree_node_ref {
+  struct redtree* tree;
+  uint32_t index;
+};
+
+VALUE redtree_node_name(VALUE self);
 
 #endif

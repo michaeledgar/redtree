@@ -29,6 +29,7 @@
 #include <ctype.h>
 
 VALUE rb_cTree, rb_cNode, rb_cToken;
+VALUE rb_aNames;
 
 #define numberof(array) (int)(sizeof(array) / sizeof((array)[0]))
 
@@ -6411,7 +6412,7 @@ redtree_parse(VALUE self)
     }
     parser->parsing_thread = rb_thread_current();
     rb_ensure(redtree_parse0, self, redtree_ensure, self);
-    parser->result = rb_tree_wrap(rb_cTree, parser->parse_tree);
+    parser->result = redtree_wrap(rb_cTree, parser->parse_tree);
     return parser->result;
 }
 
@@ -6514,7 +6515,12 @@ Init_redtree(void)
     Redtree = rb_define_class("Redtree", rb_cObject);
     rb_cTree = rb_define_class_under(Redtree, "Tree", rb_cObject);
     rb_undef_method(CLASS_OF(rb_cTree), "new");
-    rb_define_method(rb_cTree, "sequence", rb_tree_sequence, 0);
+    rb_define_method(rb_cTree, "sequence", redtree_sequence, 0);
+    rb_define_method(rb_cTree, "root", redtree_root, 0);
+
+    rb_cNode = rb_define_class_under(rb_cTree, "Node", rb_cObject);
+    rb_undef_method(CLASS_OF(rb_cTree), "new");
+    rb_define_method(rb_cNode, "name", redtree_node_name, 0);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);

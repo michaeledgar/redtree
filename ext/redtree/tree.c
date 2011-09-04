@@ -5,6 +5,8 @@
 #define INITIAL_TOKEN_COUNT 128
 #define INITIAL_SEQUENCE_COUNT 256
 
+static VALUE redtree_node_new(struct redtree* tree, uint32_t index);
+
 struct redtree* redtree_allocate() {
   return ALLOC_N(struct redtree, 1);
 }
@@ -94,11 +96,11 @@ static const rb_data_type_t tree_data_type =  {"redtree",
 };
 
 
-VALUE rb_tree_wrap(VALUE klass, struct redtree* tree) {
+VALUE redtree_wrap(VALUE klass, struct redtree* tree) {
   return TypedData_Wrap_Struct(klass, &tree_data_type, tree);
 }
 
-VALUE rb_tree_sequence(VALUE self) {
+VALUE redtree_sequence(VALUE self) {
   struct redtree *tree;
   uint32_t i;
   VALUE result = rb_ary_new();
@@ -108,6 +110,41 @@ VALUE rb_tree_sequence(VALUE self) {
     rb_ary_push(result, INT2FIX(tree->sequence[i]));
   }
   return result;
+}
+
+VALUE redtree_root(VALUE self) {
+  struct redtree *tree;
+  TypedData_Get_Struct(self, struct redtree, &tree_data_type, tree);
+  return redtree_node_new(tree, tree->sequence_count - 1);
+}
+
+static void
+node_free(void *ptr)
+{
+  xfree(ptr);
+}
+
+static size_t
+node_memsize(void *ptr)
+{
+  return sizeof(struct redtree_node_ref);
+}
+
+static const rb_data_type_t node_data_type =  {"redtree_node",
+    0, node_free, node_memsize,
+};
+
+static VALUE redtree_node_new(struct redtree* tree, uint32_t index) {
+  struct redtree_node_ref* node = ALLOC_N(struct redtree_node_ref, 1);
+  node->tree = tree;
+  node->index = index;
+  return TypedData_Wrap_Struct(rb_cNode, &node_data_type, node);
+}
+
+VALUE redtree_node_name(VALUE self) {
+  struct redtree_node_ref* node;
+  TypedData_Get_Struct(self, struct redtree_node_ref, &node_data_type, node);
+  rb_ary_entry(rb_aNames, -node->tree->sequence[node->index]);
 }
 
 #undef INITIAL_TOKEN_COUNT
