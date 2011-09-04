@@ -420,6 +420,7 @@ void redtree_stack_push(struct parser_params* parser, int32_t val) {
 #define Redtree_VERSION "0.1.0"
 
 #include "eventids1.c"
+#include "eventids2.c"
 static ID redtree_id_gets;
 
 static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, int rhs_size);
@@ -6536,6 +6537,7 @@ Init_redtree(void)
 
     redtree_id_gets = rb_intern("gets");
     redtree_init_eventids1(Redtree);
+    redtree_init_eventids2(Redtree);
     /* ensure existing in symbol table */
     (void)rb_intern("||");
     (void)rb_intern("&&");

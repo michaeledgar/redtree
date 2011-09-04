@@ -18,6 +18,9 @@ def main
   parser.on('--ids1src=PATH', 'A source file of event-IDs 1 (parse.y).') {|path|
     ids1src = path
   }
+  parser.on('--ids2src=PATH', 'A source file of event-IDs 2 (eventids2.c).') {|path|
+    ids2src = path
+  }
   parser.on('--output=PATH', 'An output file.') {|path|
     output = path
   }
@@ -35,10 +38,18 @@ def main
   when 'check'
     usage 'no --ids1src' unless ids1src
     h = read_ids1(ids1src)
+    ids2 = read_ids2(ids2src)
+    common = h & ids2
+    unless common.empty?
+      abort "event crash: #{common.join(' ')}"
+    end
     exit 0
   when 'eventids1'
     usage 'no --ids1src' unless ids1src
     result = generate_eventids1(read_ids1(ids1src))
+  when 'eventids2table'
+    usage 'no --ids2src' unless ids2src
+    result = generate_eventids2_table(read_ids2(ids2src))
   end
   if output
     File.open(output, 'w') {|f|
@@ -97,6 +108,30 @@ def read_ids1(path)
     end
   }
   ['UNUSED'] + s.to_a + ['MAX_RULES']
+end
+
+
+def generate_eventids2_table(ids)
+  buf = ""
+  buf << %Q[static void\n]
+  buf << %Q[redtree_init_eventids2_table(VALUE self)\n]
+  buf << %Q[{\n]
+  buf << %Q[    VALUE h = rb_hash_new();\n]
+  buf << %Q[    ID id;\n]
+  buf << %Q[    rb_define_const(self, "SCANNER_EVENT_TABLE", h);\n]
+  ids.each do |id|
+    buf << %Q[    id = rb_intern_const("#{id}");\n]
+    buf << %Q[    rb_hash_aset(h, ID2SYM(id), INT2NUM(1));\n]
+  end
+  buf << %Q[}\n]
+  buf
+end
+
+
+def read_ids2(path)
+  File.open(path) {|f|
+    return f.read.scan(/redtree_id_(\w+)/).flatten.uniq.sort
+  }
 end
 
 main

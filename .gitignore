@@ -7,3 +7,4 @@ ext/redtree/Makefile
 ext/redtree/y.output
 ext/redtree/eventids1.c
 ext/redtree/redtree.c
+ext/redtree/eventids2table.c
