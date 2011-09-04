@@ -330,6 +330,8 @@
 #include <errno.h>
 #include <ctype.h>
 
+VALUE rb_cTree, rb_cNode, rb_cToken;
+
 #define numberof(array) (int)(sizeof(array) / sizeof((array)[0]))
 
 #define YYMALLOC(size)    rb_parser_malloc(parser, (size))
@@ -792,7 +794,7 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 typedef union YYSTYPE
-#line 476 "redtree.y"
+#line 478 "redtree.y"
 {
     int num;
     NODE *node;
@@ -800,7 +802,7 @@ typedef union YYSTYPE
     const struct vtable *vars;
 }
 /* Line 193 of yacc.c.  */
-#line 804 "ripper.c"
+#line 806 "ripper.c"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -813,7 +815,7 @@ typedef union YYSTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 817 "ripper.c"
+#line 819 "ripper.c"
 
 #ifdef short
 # undef short
@@ -1339,64 +1341,64 @@ static const yytype_int16 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   648,   648,   648,   659,   666,   670,   674,   678,   684,
-     689,   688,   700,   709,   715,   719,   723,   727,   733,   733,
-     737,   741,   745,   749,   753,   757,   761,   765,   769,   773,
-     780,   784,   788,   792,   796,   800,   804,   808,   812,   816,
-     820,   824,   828,   834,   838,   845,   849,   853,   857,   861,
-     865,   871,   877,   881,   887,   891,   895,   902,   901,   913,
-     917,   921,   925,   929,   933,   937,   941,   945,   949,   953,
-     959,   963,   969,   973,   979,   983,   987,   991,   995,   999,
-    1003,  1007,  1011,  1015,  1021,  1025,  1031,  1035,  1041,  1045,
-    1051,  1056,  1061,  1065,  1069,  1073,  1077,  1083,  1087,  1093,
-    1098,  1103,  1107,  1111,  1115,  1119,  1125,  1129,  1135,  1139,
-    1145,  1149,  1153,  1159,  1163,  1167,  1171,  1176,  1183,  1187,
-    1193,  1197,  1203,  1207,  1207,  1213,  1214,  1215,  1216,  1217,
-    1218,  1219,  1220,  1221,  1222,  1223,  1224,  1225,  1226,  1227,
-    1228,  1229,  1230,  1231,  1232,  1233,  1234,  1235,  1236,  1237,
-    1238,  1239,  1240,  1241,  1244,  1245,  1246,  1247,  1248,  1249,
-    1250,  1251,  1252,  1253,  1254,  1255,  1256,  1257,  1258,  1259,
-    1260,  1261,  1262,  1263,  1264,  1265,  1266,  1267,  1268,  1269,
-    1270,  1271,  1272,  1273,  1274,  1275,  1276,  1277,  1278,  1279,
-    1280,  1281,  1282,  1283,  1284,  1287,  1291,  1295,  1299,  1303,
-    1307,  1311,  1315,  1319,  1323,  1327,  1331,  1335,  1339,  1343,
-    1347,  1351,  1355,  1359,  1363,  1367,  1371,  1375,  1379,  1383,
-    1387,  1391,  1395,  1399,  1403,  1407,  1411,  1415,  1419,  1423,
-    1427,  1431,  1435,  1439,  1443,  1447,  1451,  1455,  1455,  1460,
-    1464,  1470,  1477,  1481,  1485,  1489,  1495,  1501,  1505,  1511,
-    1515,  1519,  1523,  1527,  1533,  1537,  1541,  1545,  1549,  1556,
-    1556,  1568,  1574,  1578,  1584,  1588,  1592,  1596,  1602,  1606,
-    1610,  1616,  1620,  1624,  1628,  1632,  1636,  1640,  1644,  1648,
-    1652,  1656,  1656,  1661,  1665,  1669,  1673,  1677,  1681,  1685,
-    1689,  1693,  1697,  1697,  1702,  1706,  1710,  1714,  1718,  1722,
-    1726,  1730,  1734,  1734,  1734,  1738,  1738,  1738,  1742,  1746,
-    1751,  1753,  1750,  1760,  1759,  1773,  1778,  1772,  1793,  1792,
-    1806,  1805,  1822,  1823,  1822,  1837,  1841,  1845,  1849,  1855,
-    1861,  1868,  1875,  1881,  1887,  1893,  1899,  1905,  1911,  1917,
-    1923,  1929,  1933,  1937,  1943,  1947,  1953,  1957,  1963,  1967,
-    1973,  1977,  1983,  1988,  1994,  1998,  2004,  2008,  2013,  2018,
-    2022,  2026,  2031,  2036,  2040,  2046,  2050,  2054,  2058,  2062,
-    2066,  2070,  2074,  2078,  2082,  2086,  2090,  2094,  2098,  2102,
-    2108,  2112,  2119,  2123,  2127,  2134,  2138,  2144,  2148,  2155,
-    2161,  2167,  2170,  2167,  2184,  2188,  2194,  2198,  2205,  2204,
-    2218,  2222,  2226,  2232,  2236,  2240,  2244,  2248,  2252,  2256,
-    2260,  2264,  2271,  2270,  2282,  2281,  2294,  2300,  2304,  2310,
-    2314,  2320,  2324,  2328,  2334,  2338,  2344,  2348,  2354,  2358,
-    2362,  2368,  2374,  2378,  2382,  2388,  2394,  2400,  2406,  2410,
-    2417,  2420,  2426,  2430,  2436,  2440,  2447,  2450,  2457,  2460,
-    2467,  2470,  2477,  2480,  2486,  2491,  2490,  2502,  2508,  2501,
-    2522,  2526,  2530,  2534,  2540,  2547,  2551,  2555,  2559,  2565,
-    2572,  2576,  2580,  2584,  2590,  2595,  2600,  2605,  2610,  2617,
-    2622,  2627,  2632,  2637,  2642,  2647,  2654,  2663,  2669,  2674,
-    2681,  2685,  2691,  2696,  2695,  2703,  2710,  2717,  2723,  2727,
-    2731,  2735,  2739,  2743,  2747,  2751,  2755,  2759,  2763,  2767,
-    2771,  2775,  2780,  2785,  2789,  2793,  2797,  2803,  2807,  2815,
-    2821,  2830,  2834,  2840,  2848,  2856,  2860,  2866,  2870,  2876,
-    2880,  2886,  2891,  2897,  2901,  2907,  2914,  2918,  2924,  2928,
-    2928,  2934,  2938,  2944,  2948,  2954,  2958,  2964,  2968,  2972,
-    2978,  2982,  2986,  2990,  2996,  3000,  3004,  3010,  3014,  3021,
-    3024,  3031,  3034,  3040,  3046,  3053,  3056,  3060,  3066,  3070,
-    3076,  3080,  3088
+       0,   650,   650,   650,   661,   668,   672,   676,   680,   686,
+     691,   690,   702,   711,   717,   721,   725,   729,   735,   735,
+     739,   743,   747,   751,   755,   759,   763,   767,   771,   775,
+     782,   786,   790,   794,   798,   802,   806,   810,   814,   818,
+     822,   826,   830,   836,   840,   847,   851,   855,   859,   863,
+     867,   873,   879,   883,   889,   893,   897,   904,   903,   915,
+     919,   923,   927,   931,   935,   939,   943,   947,   951,   955,
+     961,   965,   971,   975,   981,   985,   989,   993,   997,  1001,
+    1005,  1009,  1013,  1017,  1023,  1027,  1033,  1037,  1043,  1047,
+    1053,  1058,  1063,  1067,  1071,  1075,  1079,  1085,  1089,  1095,
+    1100,  1105,  1109,  1113,  1117,  1121,  1127,  1131,  1137,  1141,
+    1147,  1151,  1155,  1161,  1165,  1169,  1173,  1178,  1185,  1189,
+    1195,  1199,  1205,  1209,  1209,  1215,  1216,  1217,  1218,  1219,
+    1220,  1221,  1222,  1223,  1224,  1225,  1226,  1227,  1228,  1229,
+    1230,  1231,  1232,  1233,  1234,  1235,  1236,  1237,  1238,  1239,
+    1240,  1241,  1242,  1243,  1246,  1247,  1248,  1249,  1250,  1251,
+    1252,  1253,  1254,  1255,  1256,  1257,  1258,  1259,  1260,  1261,
+    1262,  1263,  1264,  1265,  1266,  1267,  1268,  1269,  1270,  1271,
+    1272,  1273,  1274,  1275,  1276,  1277,  1278,  1279,  1280,  1281,
+    1282,  1283,  1284,  1285,  1286,  1289,  1293,  1297,  1301,  1305,
+    1309,  1313,  1317,  1321,  1325,  1329,  1333,  1337,  1341,  1345,
+    1349,  1353,  1357,  1361,  1365,  1369,  1373,  1377,  1381,  1385,
+    1389,  1393,  1397,  1401,  1405,  1409,  1413,  1417,  1421,  1425,
+    1429,  1433,  1437,  1441,  1445,  1449,  1453,  1457,  1457,  1462,
+    1466,  1472,  1479,  1483,  1487,  1491,  1497,  1503,  1507,  1513,
+    1517,  1521,  1525,  1529,  1535,  1539,  1543,  1547,  1551,  1558,
+    1558,  1570,  1576,  1580,  1586,  1590,  1594,  1598,  1604,  1608,
+    1612,  1618,  1622,  1626,  1630,  1634,  1638,  1642,  1646,  1650,
+    1654,  1658,  1658,  1663,  1667,  1671,  1675,  1679,  1683,  1687,
+    1691,  1695,  1699,  1699,  1704,  1708,  1712,  1716,  1720,  1724,
+    1728,  1732,  1736,  1736,  1736,  1740,  1740,  1740,  1744,  1748,
+    1753,  1755,  1752,  1762,  1761,  1775,  1780,  1774,  1795,  1794,
+    1808,  1807,  1824,  1825,  1824,  1839,  1843,  1847,  1851,  1857,
+    1863,  1870,  1877,  1883,  1889,  1895,  1901,  1907,  1913,  1919,
+    1925,  1931,  1935,  1939,  1945,  1949,  1955,  1959,  1965,  1969,
+    1975,  1979,  1985,  1990,  1996,  2000,  2006,  2010,  2015,  2020,
+    2024,  2028,  2033,  2038,  2042,  2048,  2052,  2056,  2060,  2064,
+    2068,  2072,  2076,  2080,  2084,  2088,  2092,  2096,  2100,  2104,
+    2110,  2114,  2121,  2125,  2129,  2136,  2140,  2146,  2150,  2157,
+    2163,  2169,  2172,  2169,  2186,  2190,  2196,  2200,  2207,  2206,
+    2220,  2224,  2228,  2234,  2238,  2242,  2246,  2250,  2254,  2258,
+    2262,  2266,  2273,  2272,  2284,  2283,  2296,  2302,  2306,  2312,
+    2316,  2322,  2326,  2330,  2336,  2340,  2346,  2350,  2356,  2360,
+    2364,  2370,  2376,  2380,  2384,  2390,  2396,  2402,  2408,  2412,
+    2419,  2422,  2428,  2432,  2438,  2442,  2449,  2452,  2459,  2462,
+    2469,  2472,  2479,  2482,  2488,  2493,  2492,  2504,  2510,  2503,
+    2524,  2528,  2532,  2536,  2542,  2549,  2553,  2557,  2561,  2567,
+    2574,  2578,  2582,  2586,  2592,  2597,  2602,  2607,  2612,  2619,
+    2624,  2629,  2634,  2639,  2644,  2649,  2656,  2665,  2671,  2676,
+    2683,  2687,  2693,  2698,  2697,  2705,  2712,  2719,  2725,  2729,
+    2733,  2737,  2741,  2745,  2749,  2753,  2757,  2761,  2765,  2769,
+    2773,  2777,  2782,  2787,  2791,  2795,  2799,  2805,  2809,  2817,
+    2823,  2832,  2836,  2842,  2850,  2858,  2862,  2868,  2872,  2878,
+    2882,  2888,  2893,  2899,  2903,  2909,  2916,  2920,  2926,  2930,
+    2930,  2936,  2940,  2946,  2950,  2956,  2960,  2966,  2970,  2974,
+    2980,  2984,  2988,  2992,  2998,  3002,  3006,  3012,  3016,  3023,
+    3026,  3033,  3036,  3042,  3048,  3055,  3058,  3062,  3068,  3072,
+    3078,  3082,  3090
 };
 #endif
 
@@ -4939,7 +4941,7 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 648 "redtree.y"
+#line 650 "redtree.y"
     {
           lex_state = EXPR_BEG;
           local_push(0);
@@ -4947,7 +4949,7 @@ yyreduce:
     break;
 
   case 3:
-#line 653 "redtree.y"
+#line 655 "redtree.y"
     {
           reduce_rule(program__top_compstmt, 1);
           local_pop();
@@ -4955,7 +4957,7 @@ yyreduce:
     break;
 
   case 4:
-#line 660 "redtree.y"
+#line 662 "redtree.y"
     {
 
           reduce_rule(top_compstmt__top_stmts__opt_terms, 2);
@@ -4963,42 +4965,42 @@ yyreduce:
     break;
 
   case 5:
-#line 667 "redtree.y"
+#line 669 "redtree.y"
     {
           reduce_rule(top_stmts__none, 1);
         ;}
     break;
 
   case 6:
-#line 671 "redtree.y"
+#line 673 "redtree.y"
     {
           reduce_rule(top_stmts__top_stmt, 1);
         ;}
     break;
 
   case 7:
-#line 675 "redtree.y"
+#line 677 "redtree.y"
     {
           reduce_rule(top_stmts__top_stmts__terms__top_stmt, 3);
         ;}
     break;
 
   case 8:
-#line 679 "redtree.y"
+#line 681 "redtree.y"
     {
           reduce_rule(top_stmts__error__top_stmt, 2);
         ;}
     break;
 
   case 9:
-#line 685 "redtree.y"
+#line 687 "redtree.y"
     {
           reduce_rule(top_stmt__stmt, 1);
         ;}
     break;
 
   case 10:
-#line 689 "redtree.y"
+#line 691 "redtree.y"
     {
           if (in_def || in_single) {
             yyerror("BEGIN in method");
@@ -5007,131 +5009,131 @@ yyreduce:
     break;
 
   case 11:
-#line 695 "redtree.y"
+#line 697 "redtree.y"
     {
           reduce_rule(top_stmt__keyword_BEGIN__LC__top_compstmt__RC, 4);
         ;}
     break;
 
   case 12:
-#line 704 "redtree.y"
+#line 706 "redtree.y"
     {
           reduce_rule(bodystmt__compstmt__opt_rescue__opt_else__opt_ensure, 4);
         ;}
     break;
 
   case 13:
-#line 710 "redtree.y"
+#line 712 "redtree.y"
     {
           reduce_rule(compstmt__stmts__opt_terms, 2);
         ;}
     break;
 
   case 14:
-#line 716 "redtree.y"
+#line 718 "redtree.y"
     {
           reduce_rule(stmts__none, 1);
         ;}
     break;
 
   case 15:
-#line 720 "redtree.y"
+#line 722 "redtree.y"
     {
           reduce_rule(stmts__stmt, 1);
         ;}
     break;
 
   case 16:
-#line 724 "redtree.y"
+#line 726 "redtree.y"
     {
           reduce_rule(stmts__stmts__terms__stmt, 3);
         ;}
     break;
 
   case 17:
-#line 728 "redtree.y"
+#line 730 "redtree.y"
     {
           reduce_rule(stmts__error__stmt, 2);
         ;}
     break;
 
   case 18:
-#line 733 "redtree.y"
+#line 735 "redtree.y"
     {lex_state = EXPR_FNAME;;}
     break;
 
   case 19:
-#line 734 "redtree.y"
+#line 736 "redtree.y"
     {
           reduce_rule(stmt__keyword_alias__fitem__fitem, 3);
         ;}
     break;
 
   case 20:
-#line 738 "redtree.y"
+#line 740 "redtree.y"
     {
           reduce_rule(stmt__keyword_alias__tGVAR__tGVAR, 3);
         ;}
     break;
 
   case 21:
-#line 742 "redtree.y"
+#line 744 "redtree.y"
     {
           reduce_rule(stmt__keyword_alias__tGVAR__tBACK_REF, 3);
         ;}
     break;
 
   case 22:
-#line 746 "redtree.y"
+#line 748 "redtree.y"
     {
           reduce_rule(stmt__keyword_alias__tGVAR__tNTH_REF, 3);
         ;}
     break;
 
   case 23:
-#line 750 "redtree.y"
+#line 752 "redtree.y"
     {
           reduce_rule(stmt__keyword_undef__undef_list, 2);
         ;}
     break;
 
   case 24:
-#line 754 "redtree.y"
+#line 756 "redtree.y"
     {
           reduce_rule(stmt__stmt__modifier_if__expr_value, 3);
         ;}
     break;
 
   case 25:
-#line 758 "redtree.y"
+#line 760 "redtree.y"
     {
           reduce_rule(stmt__stmt__modifier_unless__expr_value, 3);
         ;}
     break;
 
   case 26:
-#line 762 "redtree.y"
+#line 764 "redtree.y"
     {
           reduce_rule(stmt__stmt__modifier_while__expr_value, 3);
         ;}
     break;
 
   case 27:
-#line 766 "redtree.y"
+#line 768 "redtree.y"
     {
           reduce_rule(stmt__stmt__modifier_until__expr_value, 3);
         ;}
     break;
 
   case 28:
-#line 770 "redtree.y"
+#line 772 "redtree.y"
     {
           reduce_rule(stmt__stmt__modifier_rescue__stmt, 3);
         ;}
     break;
 
   case 29:
-#line 774 "redtree.y"
+#line 776 "redtree.y"
     {
           if (in_def || in_single) {
           rb_warn0("END in method; use at_exit");
@@ -5141,203 +5143,203 @@ yyreduce:
     break;
 
   case 30:
-#line 781 "redtree.y"
+#line 783 "redtree.y"
     {
             reduce_rule(stmt__command_asgn, 1);
         ;}
     break;
 
   case 31:
-#line 785 "redtree.y"
+#line 787 "redtree.y"
     {
           reduce_rule(stmt__mlhs__EQ__command_call, 3);
         ;}
     break;
 
   case 32:
-#line 789 "redtree.y"
+#line 791 "redtree.y"
     {
           reduce_rule(stmt__var_lhs__tOP_ASGN__command_call, 3);
         ;}
     break;
 
   case 33:
-#line 793 "redtree.y"
+#line 795 "redtree.y"
     {
           reduce_rule(stmt__primary_value__LS__opt_call_args__rbracket__tOP_ASGN__command_call, 6);
         ;}
     break;
 
   case 34:
-#line 797 "redtree.y"
+#line 799 "redtree.y"
     {
           reduce_rule(stmt__primary_value__DOT__tIDENTIFIER__tOP_ASGN__command_call, 5);
         ;}
     break;
 
   case 35:
-#line 801 "redtree.y"
+#line 803 "redtree.y"
     {
           reduce_rule(stmt__primary_value__DOT__tCONSTANT__tOP_ASGN__command_call, 5);
         ;}
     break;
 
   case 36:
-#line 805 "redtree.y"
+#line 807 "redtree.y"
     {
           reduce_rule(stmt__primary_value__tCOLON2__tCONSTANT__tOP_ASGN__command_call, 5);
         ;}
     break;
 
   case 37:
-#line 809 "redtree.y"
+#line 811 "redtree.y"
     {
           reduce_rule(stmt__primary_value__tCOLON2__tIDENTIFIER__tOP_ASGN__command_call, 5);
         ;}
     break;
 
   case 38:
-#line 813 "redtree.y"
+#line 815 "redtree.y"
     {
           reduce_rule(stmt__backref__tOP_ASGN__command_call, 3);
         ;}
     break;
 
   case 39:
-#line 817 "redtree.y"
+#line 819 "redtree.y"
     {
           reduce_rule(stmt__lhs__EQ__mrhs, 3);
         ;}
     break;
 
   case 40:
-#line 821 "redtree.y"
+#line 823 "redtree.y"
     {
           reduce_rule(stmt__mlhs__EQ__arg_value, 3);
         ;}
     break;
 
   case 41:
-#line 825 "redtree.y"
+#line 827 "redtree.y"
     {
           reduce_rule(stmt__mlhs__EQ__mrhs, 3);
         ;}
     break;
 
   case 42:
-#line 829 "redtree.y"
+#line 831 "redtree.y"
     {
             reduce_rule(stmt__expr, 1);
         ;}
     break;
 
   case 43:
-#line 835 "redtree.y"
+#line 837 "redtree.y"
     {
           reduce_rule(command_asgn__lhs__EQ__command_call, 3);
         ;}
     break;
 
   case 44:
-#line 839 "redtree.y"
+#line 841 "redtree.y"
     {
           reduce_rule(command_asgn__lhs__EQ__command_asgn, 3);
         ;}
     break;
 
   case 45:
-#line 846 "redtree.y"
+#line 848 "redtree.y"
     {
           reduce_rule(expr__command_call, 1);
         ;}
     break;
 
   case 46:
-#line 850 "redtree.y"
+#line 852 "redtree.y"
     {
           reduce_rule(expr__expr__keyword_and__expr, 3);
         ;}
     break;
 
   case 47:
-#line 854 "redtree.y"
+#line 856 "redtree.y"
     {
           reduce_rule(expr__expr__keyword_or__expr, 3);
         ;}
     break;
 
   case 48:
-#line 858 "redtree.y"
+#line 860 "redtree.y"
     {
           reduce_rule(expr__keyword_not__opt_nl__expr, 3);
         ;}
     break;
 
   case 49:
-#line 862 "redtree.y"
+#line 864 "redtree.y"
     {
           reduce_rule(expr__BANG__command_call, 2);
         ;}
     break;
 
   case 50:
-#line 866 "redtree.y"
+#line 868 "redtree.y"
     {
           reduce_rule(expr__arg, 1);
         ;}
     break;
 
   case 51:
-#line 872 "redtree.y"
+#line 874 "redtree.y"
     {
           reduce_rule(expr_value__expr, 1);
         ;}
     break;
 
   case 52:
-#line 878 "redtree.y"
+#line 880 "redtree.y"
     {
           reduce_rule(command_call__command, 1);
         ;}
     break;
 
   case 53:
-#line 882 "redtree.y"
+#line 884 "redtree.y"
     {
           reduce_rule(command_call__block_command, 1);
         ;}
     break;
 
   case 54:
-#line 888 "redtree.y"
+#line 890 "redtree.y"
     {
           reduce_rule(block_command__block_call, 1);
         ;}
     break;
 
   case 55:
-#line 892 "redtree.y"
+#line 894 "redtree.y"
     {
           reduce_rule(block_command__block_call__DOT__operation2__command_args, 4);
         ;}
     break;
 
   case 56:
-#line 896 "redtree.y"
+#line 898 "redtree.y"
     {
           reduce_rule(block_command__block_call__tCOLON2__operation2__command_args, 4);
         ;}
     break;
 
   case 57:
-#line 902 "redtree.y"
+#line 904 "redtree.y"
     {
           (yyvsp[(1) - (1)].vars) = dyna_push();
         ;}
     break;
 
   case 58:
-#line 906 "redtree.y"
+#line 908 "redtree.y"
     {
           reduce_rule(cmd_brace_block__tLBRACE_ARG__opt_block_param__compstmt__RC, 4);
 
@@ -5346,224 +5348,224 @@ yyreduce:
     break;
 
   case 59:
-#line 914 "redtree.y"
+#line 916 "redtree.y"
     {
           reduce_rule(command__operation__command_args, 2);
         ;}
     break;
 
   case 60:
-#line 918 "redtree.y"
+#line 920 "redtree.y"
     {
           reduce_rule(command__operation__command_args__cmd_brace_block, 3);
         ;}
     break;
 
   case 61:
-#line 922 "redtree.y"
+#line 924 "redtree.y"
     {
           reduce_rule(command__primary_value__DOT__operation2__command_args, 4);
         ;}
     break;
 
   case 62:
-#line 926 "redtree.y"
+#line 928 "redtree.y"
     {
           reduce_rule(command__primary_value__DOT__operation2__command_args__cmd_brace_block, 5);
        ;}
     break;
 
   case 63:
-#line 930 "redtree.y"
+#line 932 "redtree.y"
     {
           reduce_rule(command__primary_value__tCOLON2__operation2__command_args, 4);
         ;}
     break;
 
   case 64:
-#line 934 "redtree.y"
+#line 936 "redtree.y"
     {
           reduce_rule(command__primary_value__tCOLON2__operation2__command_args__cmd_brace_block, 5);
        ;}
     break;
 
   case 65:
-#line 938 "redtree.y"
+#line 940 "redtree.y"
     {
           reduce_rule(command__keyword_super__command_args, 2);
         ;}
     break;
 
   case 66:
-#line 942 "redtree.y"
+#line 944 "redtree.y"
     {
           reduce_rule(command__keyword_yield__command_args, 2);
         ;}
     break;
 
   case 67:
-#line 946 "redtree.y"
+#line 948 "redtree.y"
     {
           reduce_rule(command__keyword_return__call_args, 2);
         ;}
     break;
 
   case 68:
-#line 950 "redtree.y"
+#line 952 "redtree.y"
     {
           reduce_rule(command__keyword_break__call_args, 2);
         ;}
     break;
 
   case 69:
-#line 954 "redtree.y"
+#line 956 "redtree.y"
     {
           reduce_rule(command__keyword_next__call_args, 2);
         ;}
     break;
 
   case 70:
-#line 960 "redtree.y"
+#line 962 "redtree.y"
     {
           reduce_rule(mlhs__mlhs_basic, 1);
         ;}
     break;
 
   case 71:
-#line 964 "redtree.y"
+#line 966 "redtree.y"
     {
           reduce_rule(mlhs__tLPAREN__mlhs_inner__rparen, 3);
         ;}
     break;
 
   case 72:
-#line 970 "redtree.y"
+#line 972 "redtree.y"
     {
           reduce_rule(mlhs_inner__mlhs_basic, 1);
         ;}
     break;
 
   case 73:
-#line 974 "redtree.y"
+#line 976 "redtree.y"
     {
           reduce_rule(mlhs_inner__tLPAREN__mlhs_inner__rparen, 3);
         ;}
     break;
 
   case 74:
-#line 980 "redtree.y"
+#line 982 "redtree.y"
     {
           reduce_rule(mlhs_basic__mlhs_head, 1);
         ;}
     break;
 
   case 75:
-#line 984 "redtree.y"
+#line 986 "redtree.y"
     {
           reduce_rule(mlhs_basic__mlhs_head__mlhs_item, 2);
         ;}
     break;
 
   case 76:
-#line 988 "redtree.y"
+#line 990 "redtree.y"
     {
           reduce_rule(mlhs_basic__mlhs_head__tSTAR__mlhs_node, 3);
         ;}
     break;
 
   case 77:
-#line 992 "redtree.y"
+#line 994 "redtree.y"
     {
           reduce_rule(mlhs_basic__mlhs_head__tSTAR__mlhs_node__COMMA__mlhs_post, 5);
         ;}
     break;
 
   case 78:
-#line 996 "redtree.y"
+#line 998 "redtree.y"
     {
           reduce_rule(mlhs_basic__mlhs_head__tSTAR, 2);
         ;}
     break;
 
   case 79:
-#line 1000 "redtree.y"
+#line 1002 "redtree.y"
     {
           reduce_rule(mlhs_basic__mlhs_head__tSTAR__COMMA__mlhs_post, 4);
         ;}
     break;
 
   case 80:
-#line 1004 "redtree.y"
+#line 1006 "redtree.y"
     {
           reduce_rule(mlhs_basic__tSTAR__mlhs_node, 2);
         ;}
     break;
 
   case 81:
-#line 1008 "redtree.y"
+#line 1010 "redtree.y"
     {
           reduce_rule(mlhs_basic__tSTAR__mlhs_node__COMMA__mlhs_post, 4);
         ;}
     break;
 
   case 82:
-#line 1012 "redtree.y"
+#line 1014 "redtree.y"
     {
           reduce_rule(mlhs_basic__tSTAR, 1);
         ;}
     break;
 
   case 83:
-#line 1016 "redtree.y"
+#line 1018 "redtree.y"
     {
           reduce_rule(mlhs_basic__tSTAR__COMMA__mlhs_post, 3);
         ;}
     break;
 
   case 84:
-#line 1022 "redtree.y"
+#line 1024 "redtree.y"
     {
           reduce_rule(mlhs_item__mlhs_node, 1);
         ;}
     break;
 
   case 85:
-#line 1026 "redtree.y"
+#line 1028 "redtree.y"
     {
           reduce_rule(mlhs_item__tLPAREN__mlhs_inner__rparen, 3);
         ;}
     break;
 
   case 86:
-#line 1032 "redtree.y"
+#line 1034 "redtree.y"
     {
           reduce_rule(mlhs_head__mlhs_item__COMMA, 2);
         ;}
     break;
 
   case 87:
-#line 1036 "redtree.y"
+#line 1038 "redtree.y"
     {
           reduce_rule(mlhs_head__mlhs_head__mlhs_item__COMMA, 3);
         ;}
     break;
 
   case 88:
-#line 1042 "redtree.y"
+#line 1044 "redtree.y"
     {
           reduce_rule(mlhs_post__mlhs_item, 1);
         ;}
     break;
 
   case 89:
-#line 1046 "redtree.y"
+#line 1048 "redtree.y"
     {
           reduce_rule(mlhs_post__mlhs_post__COMMA__mlhs_item, 3);
         ;}
     break;
 
   case 90:
-#line 1052 "redtree.y"
+#line 1054 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(mlhs_node__user_variable, 1);
@@ -5571,7 +5573,7 @@ yyreduce:
     break;
 
   case 91:
-#line 1057 "redtree.y"
+#line 1059 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(mlhs_node__keyword_variable, 1);
@@ -5579,35 +5581,35 @@ yyreduce:
     break;
 
   case 92:
-#line 1062 "redtree.y"
+#line 1064 "redtree.y"
     {
           reduce_rule(mlhs_node__primary_value__LS__opt_call_args__rbracket, 4);
         ;}
     break;
 
   case 93:
-#line 1066 "redtree.y"
+#line 1068 "redtree.y"
     {
           reduce_rule(mlhs_node__primary_value__DOT__tIDENTIFIER, 3);
         ;}
     break;
 
   case 94:
-#line 1070 "redtree.y"
+#line 1072 "redtree.y"
     {
           reduce_rule(mlhs_node__primary_value__tCOLON2__tIDENTIFIER, 3);
         ;}
     break;
 
   case 95:
-#line 1074 "redtree.y"
+#line 1076 "redtree.y"
     {
           reduce_rule(mlhs_node__primary_value__DOT__tCONSTANT, 3);
         ;}
     break;
 
   case 96:
-#line 1078 "redtree.y"
+#line 1080 "redtree.y"
     {
           if (in_def || in_single)
             yyerror("dynamic constant assignment");
@@ -5616,21 +5618,21 @@ yyreduce:
     break;
 
   case 97:
-#line 1084 "redtree.y"
+#line 1086 "redtree.y"
     {
           reduce_rule(mlhs_node__tCOLON3__tCONSTANT, 2);
         ;}
     break;
 
   case 98:
-#line 1088 "redtree.y"
+#line 1090 "redtree.y"
     {
           reduce_rule(mlhs_node__backref, 1);
         ;}
     break;
 
   case 99:
-#line 1094 "redtree.y"
+#line 1096 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(lhs__user_variable, 1);
@@ -5638,7 +5640,7 @@ yyreduce:
     break;
 
   case 100:
-#line 1099 "redtree.y"
+#line 1101 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(lhs__keyword_variable, 1);
@@ -5646,35 +5648,35 @@ yyreduce:
     break;
 
   case 101:
-#line 1104 "redtree.y"
+#line 1106 "redtree.y"
     {
           reduce_rule(lhs__primary_value__LS__opt_call_args__rbracket, 4);
         ;}
     break;
 
   case 102:
-#line 1108 "redtree.y"
+#line 1110 "redtree.y"
     {
           reduce_rule(lhs__primary_value__DOT__tIDENTIFIER, 3);
         ;}
     break;
 
   case 103:
-#line 1112 "redtree.y"
+#line 1114 "redtree.y"
     {
           reduce_rule(lhs__primary_value__tCOLON2__tIDENTIFIER, 3);
         ;}
     break;
 
   case 104:
-#line 1116 "redtree.y"
+#line 1118 "redtree.y"
     {
           reduce_rule(lhs__primary_value__DOT__tCONSTANT, 3);
         ;}
     break;
 
   case 105:
-#line 1120 "redtree.y"
+#line 1122 "redtree.y"
     {
           if (in_def || in_single)
             yyerror("dynamic constant assignment");
@@ -5683,77 +5685,77 @@ yyreduce:
     break;
 
   case 106:
-#line 1126 "redtree.y"
+#line 1128 "redtree.y"
     {
           reduce_rule(lhs__tCOLON3__tCONSTANT, 2);
         ;}
     break;
 
   case 107:
-#line 1130 "redtree.y"
+#line 1132 "redtree.y"
     {
           reduce_rule(lhs__backref, 1);
         ;}
     break;
 
   case 108:
-#line 1136 "redtree.y"
+#line 1138 "redtree.y"
     {
           reduce_rule(cname__tIDENTIFIER, 1);
         ;}
     break;
 
   case 109:
-#line 1140 "redtree.y"
+#line 1142 "redtree.y"
     {
           reduce_rule(cname__tCONSTANT, 1);
         ;}
     break;
 
   case 110:
-#line 1146 "redtree.y"
+#line 1148 "redtree.y"
     {
           reduce_rule(cpath__tCOLON3__cname, 2);
         ;}
     break;
 
   case 111:
-#line 1150 "redtree.y"
+#line 1152 "redtree.y"
     {
           reduce_rule(cpath__cname, 1);
         ;}
     break;
 
   case 112:
-#line 1154 "redtree.y"
+#line 1156 "redtree.y"
     {
           reduce_rule(cpath__primary_value__tCOLON2__cname, 3);
         ;}
     break;
 
   case 113:
-#line 1160 "redtree.y"
+#line 1162 "redtree.y"
     {
           reduce_rule(fname__tIDENTIFIER, 1);
         ;}
     break;
 
   case 114:
-#line 1164 "redtree.y"
+#line 1166 "redtree.y"
     {
           reduce_rule(fname__tCONSTANT, 1);
         ;}
     break;
 
   case 115:
-#line 1168 "redtree.y"
+#line 1170 "redtree.y"
     {
           reduce_rule(fname__tFID, 1);
         ;}
     break;
 
   case 116:
-#line 1172 "redtree.y"
+#line 1174 "redtree.y"
     {
           lex_state = EXPR_ENDFN;
           reduce_rule(fname__op, 1);
@@ -5761,7 +5763,7 @@ yyreduce:
     break;
 
   case 117:
-#line 1177 "redtree.y"
+#line 1179 "redtree.y"
     {
           lex_state = EXPR_ENDFN;
           reduce_rule(fname__reswords, 1);
@@ -5769,703 +5771,703 @@ yyreduce:
     break;
 
   case 118:
-#line 1184 "redtree.y"
+#line 1186 "redtree.y"
     {
           reduce_rule(fsym__fname, 1);
         ;}
     break;
 
   case 119:
-#line 1188 "redtree.y"
+#line 1190 "redtree.y"
     {
           reduce_rule(fsym__symbol, 1);
         ;}
     break;
 
   case 120:
-#line 1194 "redtree.y"
+#line 1196 "redtree.y"
     {
           reduce_rule(fitem__fsym, 1);
         ;}
     break;
 
   case 121:
-#line 1198 "redtree.y"
+#line 1200 "redtree.y"
     {
           reduce_rule(fitem__dsym, 1);
         ;}
     break;
 
   case 122:
-#line 1204 "redtree.y"
+#line 1206 "redtree.y"
     {
           reduce_rule(undef_list__fitem, 1);
         ;}
     break;
 
   case 123:
-#line 1207 "redtree.y"
+#line 1209 "redtree.y"
     {lex_state = EXPR_FNAME;;}
     break;
 
   case 124:
-#line 1208 "redtree.y"
+#line 1210 "redtree.y"
     {
           reduce_rule(undef_list__COMMA__fitem, 2);
         ;}
     break;
 
   case 125:
-#line 1213 "redtree.y"
+#line 1215 "redtree.y"
     { reduce_rule(op__OR, 1); ;}
     break;
 
   case 126:
-#line 1214 "redtree.y"
+#line 1216 "redtree.y"
     { reduce_rule(op__CARET, 1); ;}
     break;
 
   case 127:
-#line 1215 "redtree.y"
+#line 1217 "redtree.y"
     { reduce_rule(op__AND, 1); ;}
     break;
 
   case 128:
-#line 1216 "redtree.y"
+#line 1218 "redtree.y"
     { reduce_rule(op__tCMP, 1); ;}
     break;
 
   case 129:
-#line 1217 "redtree.y"
+#line 1219 "redtree.y"
     { reduce_rule(op__tEQ, 1); ;}
     break;
 
   case 130:
-#line 1218 "redtree.y"
+#line 1220 "redtree.y"
     { reduce_rule(op__tEQQ, 1); ;}
     break;
 
   case 131:
-#line 1219 "redtree.y"
+#line 1221 "redtree.y"
     { reduce_rule(op__tMATCH, 1); ;}
     break;
 
   case 132:
-#line 1220 "redtree.y"
+#line 1222 "redtree.y"
     { reduce_rule(op__tNMATCH, 1); ;}
     break;
 
   case 133:
-#line 1221 "redtree.y"
+#line 1223 "redtree.y"
     { reduce_rule(op__GT, 1); ;}
     break;
 
   case 134:
-#line 1222 "redtree.y"
+#line 1224 "redtree.y"
     { reduce_rule(op__tGEQ, 1); ;}
     break;
 
   case 135:
-#line 1223 "redtree.y"
+#line 1225 "redtree.y"
     { reduce_rule(op__LE, 1); ;}
     break;
 
   case 136:
-#line 1224 "redtree.y"
+#line 1226 "redtree.y"
     { reduce_rule(op__tLEQ, 1); ;}
     break;
 
   case 137:
-#line 1225 "redtree.y"
+#line 1227 "redtree.y"
     { reduce_rule(op__tNEQ, 1); ;}
     break;
 
   case 138:
-#line 1226 "redtree.y"
+#line 1228 "redtree.y"
     { reduce_rule(op__tLSHFT, 1); ;}
     break;
 
   case 139:
-#line 1227 "redtree.y"
+#line 1229 "redtree.y"
     { reduce_rule(op__tRSHFT, 1); ;}
     break;
 
   case 140:
-#line 1228 "redtree.y"
+#line 1230 "redtree.y"
     { reduce_rule(op__PLUS, 1); ;}
     break;
 
   case 141:
-#line 1229 "redtree.y"
+#line 1231 "redtree.y"
     { reduce_rule(op__MINUS, 1); ;}
     break;
 
   case 142:
-#line 1230 "redtree.y"
+#line 1232 "redtree.y"
     { reduce_rule(op__TIMES, 1); ;}
     break;
 
   case 143:
-#line 1231 "redtree.y"
+#line 1233 "redtree.y"
     { reduce_rule(op__tSTAR, 1); ;}
     break;
 
   case 144:
-#line 1232 "redtree.y"
+#line 1234 "redtree.y"
     { reduce_rule(op__DIVIDE, 1); ;}
     break;
 
   case 145:
-#line 1233 "redtree.y"
+#line 1235 "redtree.y"
     { reduce_rule(op__MOD, 1); ;}
     break;
 
   case 146:
-#line 1234 "redtree.y"
+#line 1236 "redtree.y"
     { reduce_rule(op__tPOW, 1); ;}
     break;
 
   case 147:
-#line 1235 "redtree.y"
+#line 1237 "redtree.y"
     { reduce_rule(op__BANG, 1); ;}
     break;
 
   case 148:
-#line 1236 "redtree.y"
+#line 1238 "redtree.y"
     { reduce_rule(op__TILDE, 1); ;}
     break;
 
   case 149:
-#line 1237 "redtree.y"
+#line 1239 "redtree.y"
     { reduce_rule(op__tUPLUS, 1); ;}
     break;
 
   case 150:
-#line 1238 "redtree.y"
+#line 1240 "redtree.y"
     { reduce_rule(op__tUMINUS, 1); ;}
     break;
 
   case 151:
-#line 1239 "redtree.y"
+#line 1241 "redtree.y"
     { reduce_rule(op__tAREF, 1); ;}
     break;
 
   case 152:
-#line 1240 "redtree.y"
+#line 1242 "redtree.y"
     { reduce_rule(op__tASET, 1); ;}
     break;
 
   case 153:
-#line 1241 "redtree.y"
+#line 1243 "redtree.y"
     { reduce_rule(op__BACKTICK, 1); ;}
     break;
 
   case 154:
-#line 1244 "redtree.y"
+#line 1246 "redtree.y"
     { reduce_rule(reswords__keyword__LINE__, 2); ;}
     break;
 
   case 155:
-#line 1245 "redtree.y"
+#line 1247 "redtree.y"
     { reduce_rule(reswords__keyword__FILE__, 2); ;}
     break;
 
   case 156:
-#line 1246 "redtree.y"
+#line 1248 "redtree.y"
     { reduce_rule(reswords__keyword__ENCODING__, 2); ;}
     break;
 
   case 157:
-#line 1247 "redtree.y"
+#line 1249 "redtree.y"
     { reduce_rule(reswords__keyword_BEGIN, 1); ;}
     break;
 
   case 158:
-#line 1248 "redtree.y"
+#line 1250 "redtree.y"
     { reduce_rule(reswords__keyword_END, 1); ;}
     break;
 
   case 159:
-#line 1249 "redtree.y"
+#line 1251 "redtree.y"
     { reduce_rule(reswords__keyword_alias, 1); ;}
     break;
 
   case 160:
-#line 1250 "redtree.y"
+#line 1252 "redtree.y"
     { reduce_rule(reswords__keyword_and, 1); ;}
     break;
 
   case 161:
-#line 1251 "redtree.y"
+#line 1253 "redtree.y"
     { reduce_rule(reswords__keyword_begin, 1); ;}
     break;
 
   case 162:
-#line 1252 "redtree.y"
+#line 1254 "redtree.y"
     { reduce_rule(reswords__keyword_break, 1); ;}
     break;
 
   case 163:
-#line 1253 "redtree.y"
+#line 1255 "redtree.y"
     { reduce_rule(reswords__keyword_case, 1); ;}
     break;
 
   case 164:
-#line 1254 "redtree.y"
+#line 1256 "redtree.y"
     { reduce_rule(reswords__keyword_class, 1); ;}
     break;
 
   case 165:
-#line 1255 "redtree.y"
+#line 1257 "redtree.y"
     { reduce_rule(reswords__keyword_def, 1); ;}
     break;
 
   case 166:
-#line 1256 "redtree.y"
+#line 1258 "redtree.y"
     { reduce_rule(reswords__keyword_defined, 1); ;}
     break;
 
   case 167:
-#line 1257 "redtree.y"
+#line 1259 "redtree.y"
     { reduce_rule(reswords__keyword_do, 1); ;}
     break;
 
   case 168:
-#line 1258 "redtree.y"
+#line 1260 "redtree.y"
     { reduce_rule(reswords__keyword_else, 1); ;}
     break;
 
   case 169:
-#line 1259 "redtree.y"
+#line 1261 "redtree.y"
     { reduce_rule(reswords__keyword_elsif, 1); ;}
     break;
 
   case 170:
-#line 1260 "redtree.y"
+#line 1262 "redtree.y"
     { reduce_rule(reswords__keyword_end, 1); ;}
     break;
 
   case 171:
-#line 1261 "redtree.y"
+#line 1263 "redtree.y"
     { reduce_rule(reswords__keyword_ensure, 1); ;}
     break;
 
   case 172:
-#line 1262 "redtree.y"
+#line 1264 "redtree.y"
     { reduce_rule(reswords__keyword_false, 1); ;}
     break;
 
   case 173:
-#line 1263 "redtree.y"
+#line 1265 "redtree.y"
     { reduce_rule(reswords__keyword_for, 1); ;}
     break;
 
   case 174:
-#line 1264 "redtree.y"
+#line 1266 "redtree.y"
     { reduce_rule(reswords__keyword_in, 1); ;}
     break;
 
   case 175:
-#line 1265 "redtree.y"
+#line 1267 "redtree.y"
     { reduce_rule(reswords__keyword_module, 1); ;}
     break;
 
   case 176:
-#line 1266 "redtree.y"
+#line 1268 "redtree.y"
     { reduce_rule(reswords__keyword_next, 1); ;}
     break;
 
   case 177:
-#line 1267 "redtree.y"
+#line 1269 "redtree.y"
     { reduce_rule(reswords__keyword_nil, 1); ;}
     break;
 
   case 178:
-#line 1268 "redtree.y"
+#line 1270 "redtree.y"
     { reduce_rule(reswords__keyword_not, 1); ;}
     break;
 
   case 179:
-#line 1269 "redtree.y"
+#line 1271 "redtree.y"
     { reduce_rule(reswords__keyword_or, 1); ;}
     break;
 
   case 180:
-#line 1270 "redtree.y"
+#line 1272 "redtree.y"
     { reduce_rule(reswords__keyword_redo, 1); ;}
     break;
 
   case 181:
-#line 1271 "redtree.y"
+#line 1273 "redtree.y"
     { reduce_rule(reswords__keyword_rescue, 1); ;}
     break;
 
   case 182:
-#line 1272 "redtree.y"
+#line 1274 "redtree.y"
     { reduce_rule(reswords__keyword_retry, 1); ;}
     break;
 
   case 183:
-#line 1273 "redtree.y"
+#line 1275 "redtree.y"
     { reduce_rule(reswords__keyword_return, 1); ;}
     break;
 
   case 184:
-#line 1274 "redtree.y"
+#line 1276 "redtree.y"
     { reduce_rule(reswords__keyword_self, 1); ;}
     break;
 
   case 185:
-#line 1275 "redtree.y"
+#line 1277 "redtree.y"
     { reduce_rule(reswords__keyword_super, 1); ;}
     break;
 
   case 186:
-#line 1276 "redtree.y"
+#line 1278 "redtree.y"
     { reduce_rule(reswords__keyword_then, 1); ;}
     break;
 
   case 187:
-#line 1277 "redtree.y"
+#line 1279 "redtree.y"
     { reduce_rule(reswords__keyword_true, 1); ;}
     break;
 
   case 188:
-#line 1278 "redtree.y"
+#line 1280 "redtree.y"
     { reduce_rule(reswords__keyword_undef, 1); ;}
     break;
 
   case 189:
-#line 1279 "redtree.y"
+#line 1281 "redtree.y"
     { reduce_rule(reswords__keyword_when, 1); ;}
     break;
 
   case 190:
-#line 1280 "redtree.y"
+#line 1282 "redtree.y"
     { reduce_rule(reswords__keyword_yield, 1); ;}
     break;
 
   case 191:
-#line 1281 "redtree.y"
+#line 1283 "redtree.y"
     { reduce_rule(reswords__keyword_if, 1); ;}
     break;
 
   case 192:
-#line 1282 "redtree.y"
+#line 1284 "redtree.y"
     { reduce_rule(reswords__keyword_unless, 1); ;}
     break;
 
   case 193:
-#line 1283 "redtree.y"
+#line 1285 "redtree.y"
     { reduce_rule(reswords__keyword_while, 1); ;}
     break;
 
   case 194:
-#line 1284 "redtree.y"
+#line 1286 "redtree.y"
     { reduce_rule(reswords__keyword_until, 1); ;}
     break;
 
   case 195:
-#line 1288 "redtree.y"
+#line 1290 "redtree.y"
     {
           reduce_rule(arg__lhs__EQ__arg, 3);
         ;}
     break;
 
   case 196:
-#line 1292 "redtree.y"
+#line 1294 "redtree.y"
     {
           reduce_rule(arg__lhs__EQ__arg__modifier_rescue__arg, 5);
         ;}
     break;
 
   case 197:
-#line 1296 "redtree.y"
+#line 1298 "redtree.y"
     {
           reduce_rule(arg__var_lhs__tOP_ASGN__arg, 3);
         ;}
     break;
 
   case 198:
-#line 1300 "redtree.y"
+#line 1302 "redtree.y"
     {
           reduce_rule(arg__var_lhs__tOP_ASGN__arg__modifier_rescue__arg, 5);
         ;}
     break;
 
   case 199:
-#line 1304 "redtree.y"
+#line 1306 "redtree.y"
     {
           reduce_rule(arg__primary_value__LS__opt_call_args__rbracket__tOP_ASGN__arg, 6);
         ;}
     break;
 
   case 200:
-#line 1308 "redtree.y"
+#line 1310 "redtree.y"
     {
           reduce_rule(arg__primary_value__DOT__tIDENTIFIER__tOP_ASGN__arg, 5);
         ;}
     break;
 
   case 201:
-#line 1312 "redtree.y"
+#line 1314 "redtree.y"
     {
           reduce_rule(arg__primary_value__DOT__tCONSTANT__tOP_ASGN__arg, 5);
         ;}
     break;
 
   case 202:
-#line 1316 "redtree.y"
+#line 1318 "redtree.y"
     {
           reduce_rule(arg__primary_value__tCOLON2__tIDENTIFIER__tOP_ASGN__arg, 5);
         ;}
     break;
 
   case 203:
-#line 1320 "redtree.y"
+#line 1322 "redtree.y"
     {
           reduce_rule(arg__primary_value__tCOLON2__tCONSTANT__tOP_ASGN__arg, 5);
         ;}
     break;
 
   case 204:
-#line 1324 "redtree.y"
+#line 1326 "redtree.y"
     {
           reduce_rule(arg__tCOLON3__tCONSTANT__tOP_ASGN__arg, 4);
         ;}
     break;
 
   case 205:
-#line 1328 "redtree.y"
+#line 1330 "redtree.y"
     {
           reduce_rule(arg__backref__tOP_ASGN__arg, 3);
         ;}
     break;
 
   case 206:
-#line 1332 "redtree.y"
+#line 1334 "redtree.y"
     {
           reduce_rule(arg__arg__tDOT2__arg, 3);
         ;}
     break;
 
   case 207:
-#line 1336 "redtree.y"
+#line 1338 "redtree.y"
     {
           reduce_rule(arg__arg__tDOT3__arg, 3);
         ;}
     break;
 
   case 208:
-#line 1340 "redtree.y"
+#line 1342 "redtree.y"
     {
           reduce_rule(arg__arg__PLUS__arg, 3);
         ;}
     break;
 
   case 209:
-#line 1344 "redtree.y"
+#line 1346 "redtree.y"
     {
           reduce_rule(arg__arg__MINUS__arg, 3);
         ;}
     break;
 
   case 210:
-#line 1348 "redtree.y"
+#line 1350 "redtree.y"
     {
           reduce_rule(arg__arg__TIMES__arg, 3);
         ;}
     break;
 
   case 211:
-#line 1352 "redtree.y"
+#line 1354 "redtree.y"
     {
           reduce_rule(arg__arg__DIVIDE__arg, 3);
         ;}
     break;
 
   case 212:
-#line 1356 "redtree.y"
+#line 1358 "redtree.y"
     {
           reduce_rule(arg__arg__DIVIDE__arg, 3);
         ;}
     break;
 
   case 213:
-#line 1360 "redtree.y"
+#line 1362 "redtree.y"
     {
           reduce_rule(arg__arg__tPOW__arg, 3);
         ;}
     break;
 
   case 214:
-#line 1364 "redtree.y"
+#line 1366 "redtree.y"
     {
           reduce_rule(arg__tUMINUS_NUM__tINTEGER__tPOW__arg, 4);
         ;}
     break;
 
   case 215:
-#line 1368 "redtree.y"
+#line 1370 "redtree.y"
     {
           reduce_rule(arg__tUMINUS_NUM__tFLOAT__tPOW__arg, 4);
         ;}
     break;
 
   case 216:
-#line 1372 "redtree.y"
+#line 1374 "redtree.y"
     {
           reduce_rule(arg__tUPLUS__arg, 2);
         ;}
     break;
 
   case 217:
-#line 1376 "redtree.y"
+#line 1378 "redtree.y"
     {
           reduce_rule(arg__tUMINUS__arg, 2);
         ;}
     break;
 
   case 218:
-#line 1380 "redtree.y"
+#line 1382 "redtree.y"
     {
           reduce_rule(arg__arg__OR__arg, 3);
         ;}
     break;
 
   case 219:
-#line 1384 "redtree.y"
+#line 1386 "redtree.y"
     {
           reduce_rule(arg__arg__CARET__arg, 3);
         ;}
     break;
 
   case 220:
-#line 1388 "redtree.y"
+#line 1390 "redtree.y"
     {
           reduce_rule(arg__arg__AND__arg, 3);
         ;}
     break;
 
   case 221:
-#line 1392 "redtree.y"
+#line 1394 "redtree.y"
     {
           reduce_rule(arg__arg__tCMP__arg, 3);
         ;}
     break;
 
   case 222:
-#line 1396 "redtree.y"
+#line 1398 "redtree.y"
     {
           reduce_rule(arg__arg__GT__arg, 3);
         ;}
     break;
 
   case 223:
-#line 1400 "redtree.y"
+#line 1402 "redtree.y"
     {
           reduce_rule(arg__arg__tGEQ__arg, 3);
         ;}
     break;
 
   case 224:
-#line 1404 "redtree.y"
+#line 1406 "redtree.y"
     {
           reduce_rule(arg__arg__LT__arg, 3);
         ;}
     break;
 
   case 225:
-#line 1408 "redtree.y"
+#line 1410 "redtree.y"
     {
           reduce_rule(arg__arg__tLEQ__arg, 3);
         ;}
     break;
 
   case 226:
-#line 1412 "redtree.y"
+#line 1414 "redtree.y"
     {
           reduce_rule(arg__arg__tEQ__arg, 3);
         ;}
     break;
 
   case 227:
-#line 1416 "redtree.y"
+#line 1418 "redtree.y"
     {
           reduce_rule(arg__arg__tEQQ__arg, 3);
         ;}
     break;
 
   case 228:
-#line 1420 "redtree.y"
+#line 1422 "redtree.y"
     {
           reduce_rule(arg__arg__tNEQ__arg, 3);
         ;}
     break;
 
   case 229:
-#line 1424 "redtree.y"
+#line 1426 "redtree.y"
     {
           reduce_rule(arg__arg__tMATCH__arg, 3);
         ;}
     break;
 
   case 230:
-#line 1428 "redtree.y"
+#line 1430 "redtree.y"
     {
           reduce_rule(arg__arg__tNMATCH__arg, 3);
         ;}
     break;
 
   case 231:
-#line 1432 "redtree.y"
+#line 1434 "redtree.y"
     {
           reduce_rule(arg__BANG__arg, 2);
         ;}
     break;
 
   case 232:
-#line 1436 "redtree.y"
+#line 1438 "redtree.y"
     {
           reduce_rule(arg__TILDE__arg, 2);
         ;}
     break;
 
   case 233:
-#line 1440 "redtree.y"
+#line 1442 "redtree.y"
     {
           reduce_rule(arg__arg__tLSHFT__arg, 3);
         ;}
     break;
 
   case 234:
-#line 1444 "redtree.y"
+#line 1446 "redtree.y"
     {
           reduce_rule(arg__arg__tRSHFT__arg, 3);
         ;}
     break;
 
   case 235:
-#line 1448 "redtree.y"
+#line 1450 "redtree.y"
     {
           reduce_rule(arg__arg__tANDOP__arg, 3);
         ;}
     break;
 
   case 236:
-#line 1452 "redtree.y"
+#line 1454 "redtree.y"
     {
           reduce_rule(arg__arg__tOROP__arg, 3);
         ;}
     break;
 
   case 237:
-#line 1455 "redtree.y"
+#line 1457 "redtree.y"
     {in_defined = 1;;}
     break;
 
   case 238:
-#line 1456 "redtree.y"
+#line 1458 "redtree.y"
     {
           in_defined = 0;
           reduce_rule(arg__keyword_defined__opt_nl__arg, 3);
@@ -6473,21 +6475,21 @@ yyreduce:
     break;
 
   case 239:
-#line 1461 "redtree.y"
+#line 1463 "redtree.y"
     {
           reduce_rule(arg__QMARK__arg__opt_nl__COLON__arg, 5);
         ;}
     break;
 
   case 240:
-#line 1465 "redtree.y"
+#line 1467 "redtree.y"
     {
           reduce_rule(arg__primary, 1);
         ;}
     break;
 
   case 241:
-#line 1471 "redtree.y"
+#line 1473 "redtree.y"
     {
           reduce_rule(arg_value__arg, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -6495,126 +6497,126 @@ yyreduce:
     break;
 
   case 242:
-#line 1478 "redtree.y"
+#line 1480 "redtree.y"
     {
           reduce_rule(aref_args__none, 1);
         ;}
     break;
 
   case 243:
-#line 1482 "redtree.y"
+#line 1484 "redtree.y"
     {
           reduce_rule(aref_args__args__trailer, 2);
         ;}
     break;
 
   case 244:
-#line 1486 "redtree.y"
+#line 1488 "redtree.y"
     {
           reduce_rule(aref_args__args__COMMA__assocs__trailer, 4);
         ;}
     break;
 
   case 245:
-#line 1490 "redtree.y"
+#line 1492 "redtree.y"
     {
           reduce_rule(aref_args__assocs__trailer, 2);
         ;}
     break;
 
   case 246:
-#line 1496 "redtree.y"
+#line 1498 "redtree.y"
     {
           reduce_rule(paren_args__LR__opt_call_args__rparen, 3);
         ;}
     break;
 
   case 247:
-#line 1502 "redtree.y"
+#line 1504 "redtree.y"
     {
           reduce_rule(opt_paren_args__none, 1);
         ;}
     break;
 
   case 248:
-#line 1506 "redtree.y"
+#line 1508 "redtree.y"
     {
           reduce_rule(opt_paren_args__paren_args, 1);
         ;}
     break;
 
   case 249:
-#line 1512 "redtree.y"
+#line 1514 "redtree.y"
     {
           reduce_rule(opt_call_args__none, 1);
         ;}
     break;
 
   case 250:
-#line 1516 "redtree.y"
+#line 1518 "redtree.y"
     {
           reduce_rule(opt_call_args__call_args, 1);
         ;}
     break;
 
   case 251:
-#line 1520 "redtree.y"
+#line 1522 "redtree.y"
     {
           reduce_rule(opt_call_args__args__COMMA, 2);
         ;}
     break;
 
   case 252:
-#line 1524 "redtree.y"
+#line 1526 "redtree.y"
     {
           reduce_rule(opt_call_args__args__COMMA__assocs__COMMA, 4);
         ;}
     break;
 
   case 253:
-#line 1528 "redtree.y"
+#line 1530 "redtree.y"
     {
           reduce_rule(opt_call_args__assocs__COMMA, 2);
         ;}
     break;
 
   case 254:
-#line 1534 "redtree.y"
+#line 1536 "redtree.y"
     {
           reduce_rule(call_args__command, 1);
         ;}
     break;
 
   case 255:
-#line 1538 "redtree.y"
+#line 1540 "redtree.y"
     {
           reduce_rule(call_args__args__opt_block_arg, 2);
         ;}
     break;
 
   case 256:
-#line 1542 "redtree.y"
+#line 1544 "redtree.y"
     {
           reduce_rule(call_args__assocs__opt_block_arg, 2);
         ;}
     break;
 
   case 257:
-#line 1546 "redtree.y"
+#line 1548 "redtree.y"
     {
           reduce_rule(call_args__args__COMMA__assocs__opt_block_arg, 4);
         ;}
     break;
 
   case 258:
-#line 1550 "redtree.y"
+#line 1552 "redtree.y"
     {
           reduce_rule(call_args__block_arg, 1);
         ;}
     break;
 
   case 259:
-#line 1556 "redtree.y"
+#line 1558 "redtree.y"
     {
           (yyval.val) = cmdarg_stack;
           CMDARG_PUSH(1);
@@ -6622,7 +6624,7 @@ yyreduce:
     break;
 
   case 260:
-#line 1561 "redtree.y"
+#line 1563 "redtree.y"
     {
           /* CMDARG_POP() */
           cmdarg_stack = (yyvsp[(1) - (2)].val);
@@ -6631,152 +6633,152 @@ yyreduce:
     break;
 
   case 261:
-#line 1569 "redtree.y"
+#line 1571 "redtree.y"
     {
           reduce_rule(block_arg__tAMPER__arg_value, 2);
         ;}
     break;
 
   case 262:
-#line 1575 "redtree.y"
+#line 1577 "redtree.y"
     {
           reduce_rule(opt_block_arg__COMMA__block_arg, 2);
         ;}
     break;
 
   case 263:
-#line 1579 "redtree.y"
+#line 1581 "redtree.y"
     {
           reduce_rule(opt_block_arg__none, 1);
         ;}
     break;
 
   case 264:
-#line 1585 "redtree.y"
+#line 1587 "redtree.y"
     {
           reduce_rule(args__arg_value, 1);
         ;}
     break;
 
   case 265:
-#line 1589 "redtree.y"
+#line 1591 "redtree.y"
     {
           reduce_rule(args__tSTAR__arg_value, 2);
         ;}
     break;
 
   case 266:
-#line 1593 "redtree.y"
+#line 1595 "redtree.y"
     {
           reduce_rule(args__args__COMMA__arg_value, 3);
         ;}
     break;
 
   case 267:
-#line 1597 "redtree.y"
+#line 1599 "redtree.y"
     {
           reduce_rule(args__args__COMMA__tSTAR__arg_value, 4);
         ;}
     break;
 
   case 268:
-#line 1603 "redtree.y"
+#line 1605 "redtree.y"
     {
           reduce_rule(mrhs__args__COMMA__arg_value, 3);
         ;}
     break;
 
   case 269:
-#line 1607 "redtree.y"
+#line 1609 "redtree.y"
     {
           reduce_rule(mrhs__args__COMMA__tSTAR__arg_value, 4);
         ;}
     break;
 
   case 270:
-#line 1611 "redtree.y"
+#line 1613 "redtree.y"
     {
           reduce_rule(mrhs__tSTAR__arg_value, 2);
         ;}
     break;
 
   case 271:
-#line 1617 "redtree.y"
+#line 1619 "redtree.y"
     {
           reduce_rule(primary__literal, 1);
         ;}
     break;
 
   case 272:
-#line 1621 "redtree.y"
+#line 1623 "redtree.y"
     {
           reduce_rule(primary__strings, 1);
         ;}
     break;
 
   case 273:
-#line 1625 "redtree.y"
+#line 1627 "redtree.y"
     {
           reduce_rule(primary__xstring, 1);
         ;}
     break;
 
   case 274:
-#line 1629 "redtree.y"
+#line 1631 "redtree.y"
     {
           reduce_rule(primary__regexp, 1);
         ;}
     break;
 
   case 275:
-#line 1633 "redtree.y"
+#line 1635 "redtree.y"
     {
           reduce_rule(primary__words, 1);
         ;}
     break;
 
   case 276:
-#line 1637 "redtree.y"
+#line 1639 "redtree.y"
     {
           reduce_rule(primary__qwords, 1);
         ;}
     break;
 
   case 277:
-#line 1641 "redtree.y"
+#line 1643 "redtree.y"
     {
           reduce_rule(primary__var_ref, 1);
         ;}
     break;
 
   case 278:
-#line 1645 "redtree.y"
+#line 1647 "redtree.y"
     {
           reduce_rule(primary__backref, 1);
         ;}
     break;
 
   case 279:
-#line 1649 "redtree.y"
+#line 1651 "redtree.y"
     {
           reduce_rule(primary__tFID, 1);
         ;}
     break;
 
   case 280:
-#line 1653 "redtree.y"
+#line 1655 "redtree.y"
     {
           reduce_rule(primary__k_begin, 1);
         ;}
     break;
 
   case 281:
-#line 1656 "redtree.y"
+#line 1658 "redtree.y"
     {lex_state = EXPR_ENDARG;;}
     break;
 
   case 282:
-#line 1657 "redtree.y"
+#line 1659 "redtree.y"
     {
           rb_warning0("(...) interpreted as grouped expression");
           reduce_rule(primary__tLPAREN_ARG__expr__rparen, 3);
@@ -6784,75 +6786,75 @@ yyreduce:
     break;
 
   case 283:
-#line 1662 "redtree.y"
+#line 1664 "redtree.y"
     {
           reduce_rule(primary__tLPAREN__compstmt__RR, 3);
         ;}
     break;
 
   case 284:
-#line 1666 "redtree.y"
+#line 1668 "redtree.y"
     {
           reduce_rule(primary__primary_value__tCOLON2__tCONSTANT, 3);
         ;}
     break;
 
   case 285:
-#line 1670 "redtree.y"
+#line 1672 "redtree.y"
     {
           reduce_rule(primary__tCOLON3__tCONSTANT, 2);
         ;}
     break;
 
   case 286:
-#line 1674 "redtree.y"
+#line 1676 "redtree.y"
     {
           reduce_rule(primary__tLBRACK__aref_args__RS, 3);
         ;}
     break;
 
   case 287:
-#line 1678 "redtree.y"
+#line 1680 "redtree.y"
     {
           reduce_rule(primary__tLBRACE__assoc_list__RC, 3);
         ;}
     break;
 
   case 288:
-#line 1682 "redtree.y"
+#line 1684 "redtree.y"
     {
           reduce_rule(primary__keyword_return, 1);
         ;}
     break;
 
   case 289:
-#line 1686 "redtree.y"
+#line 1688 "redtree.y"
     {
           reduce_rule(primary__keyword_yield__LR__call_args__rparen, 4);
         ;}
     break;
 
   case 290:
-#line 1690 "redtree.y"
+#line 1692 "redtree.y"
     {
           reduce_rule(primary__keyword_yield__LR__rparen, 3);
         ;}
     break;
 
   case 291:
-#line 1694 "redtree.y"
+#line 1696 "redtree.y"
     {
           reduce_rule(primary__keyword_yield, 1);
         ;}
     break;
 
   case 292:
-#line 1697 "redtree.y"
+#line 1699 "redtree.y"
     {in_defined = 1;;}
     break;
 
   case 293:
-#line 1698 "redtree.y"
+#line 1700 "redtree.y"
     {
           in_defined = 0;
           reduce_rule(primary__keyword_defined__opt_nl__LR__expr__rparen, 5);
@@ -6860,128 +6862,128 @@ yyreduce:
     break;
 
   case 294:
-#line 1703 "redtree.y"
+#line 1705 "redtree.y"
     {
           reduce_rule(primary__keyword_not__LR__expr__rparen, 4);
         ;}
     break;
 
   case 295:
-#line 1707 "redtree.y"
+#line 1709 "redtree.y"
     {
           reduce_rule(primary__keyword_not__LR__rparen, 3);
         ;}
     break;
 
   case 296:
-#line 1711 "redtree.y"
+#line 1713 "redtree.y"
     {
           reduce_rule(primary__operation__brace_block, 2);
         ;}
     break;
 
   case 297:
-#line 1715 "redtree.y"
+#line 1717 "redtree.y"
     {
           reduce_rule(primary__method_call, 1);
         ;}
     break;
 
   case 298:
-#line 1719 "redtree.y"
+#line 1721 "redtree.y"
     {
           reduce_rule(primary__method_call__brace_block, 2);
         ;}
     break;
 
   case 299:
-#line 1723 "redtree.y"
+#line 1725 "redtree.y"
     {
           reduce_rule(primary__tLAMBDA__lambda, 2);
         ;}
     break;
 
   case 300:
-#line 1727 "redtree.y"
+#line 1729 "redtree.y"
     {
           reduce_rule(primary__k_if__expr_value__then__compstmt__if_tail__k_end, 6);
         ;}
     break;
 
   case 301:
-#line 1731 "redtree.y"
+#line 1733 "redtree.y"
     {
           reduce_rule(primary__k_unless__expr_value__then__compstmt__opt_else__k_end, 6);
         ;}
     break;
 
   case 302:
-#line 1734 "redtree.y"
+#line 1736 "redtree.y"
     {COND_PUSH(1);;}
     break;
 
   case 303:
-#line 1734 "redtree.y"
+#line 1736 "redtree.y"
     {COND_POP();;}
     break;
 
   case 304:
-#line 1735 "redtree.y"
+#line 1737 "redtree.y"
     {
           reduce_rule(primary__k_while__expr_value__do__compstmt__k_end, 5);
         ;}
     break;
 
   case 305:
-#line 1738 "redtree.y"
+#line 1740 "redtree.y"
     {COND_PUSH(1);;}
     break;
 
   case 306:
-#line 1738 "redtree.y"
+#line 1740 "redtree.y"
     {COND_POP();;}
     break;
 
   case 307:
-#line 1739 "redtree.y"
+#line 1741 "redtree.y"
     {
           reduce_rule(primary__k_until__expr_value__do__compstmt__k_end, 5);
         ;}
     break;
 
   case 308:
-#line 1743 "redtree.y"
+#line 1745 "redtree.y"
     {
           reduce_rule(primary__k_case__expr_value__opt_terms__case_body__k_end, 5);
         ;}
     break;
 
   case 309:
-#line 1747 "redtree.y"
+#line 1749 "redtree.y"
     {
           reduce_rule(primary__k_case__opt_terms__case_body__k_end, 4);
         ;}
     break;
 
   case 310:
-#line 1751 "redtree.y"
+#line 1753 "redtree.y"
     {COND_PUSH(1);;}
     break;
 
   case 311:
-#line 1753 "redtree.y"
+#line 1755 "redtree.y"
     {COND_POP();;}
     break;
 
   case 312:
-#line 1756 "redtree.y"
+#line 1758 "redtree.y"
     {
           reduce_rule(primary__k_for__for_var__keyword_in__expr_value__do__compstmt__k_end, 7);
         ;}
     break;
 
   case 313:
-#line 1760 "redtree.y"
+#line 1762 "redtree.y"
     {
           if (in_def || in_single)
           yyerror("class definition in method body");
@@ -6990,7 +6992,7 @@ yyreduce:
     break;
 
   case 314:
-#line 1767 "redtree.y"
+#line 1769 "redtree.y"
     {
           reduce_rule(primary__k_class__cpath__superclass__bodystmt__k_end, 5);
 
@@ -6999,7 +7001,7 @@ yyreduce:
     break;
 
   case 315:
-#line 1773 "redtree.y"
+#line 1775 "redtree.y"
     {
           (yyval.num) = in_def;
           in_def = 0;
@@ -7007,7 +7009,7 @@ yyreduce:
     break;
 
   case 316:
-#line 1778 "redtree.y"
+#line 1780 "redtree.y"
     {
           (yyval.num) = in_single;
           in_single = 0;
@@ -7016,7 +7018,7 @@ yyreduce:
     break;
 
   case 317:
-#line 1785 "redtree.y"
+#line 1787 "redtree.y"
     {
           reduce_rule(primary__k_class__tLSHFT__expr__term__bodystmt__k_end, 6);
 
@@ -7027,7 +7029,7 @@ yyreduce:
     break;
 
   case 318:
-#line 1793 "redtree.y"
+#line 1795 "redtree.y"
     {
           if (in_def || in_single)
           yyerror("module definition in method body");
@@ -7036,7 +7038,7 @@ yyreduce:
     break;
 
   case 319:
-#line 1800 "redtree.y"
+#line 1802 "redtree.y"
     {
           reduce_rule(primary__k_module__cpath__bodystmt__k_end, 4);
 
@@ -7045,7 +7047,7 @@ yyreduce:
     break;
 
   case 320:
-#line 1806 "redtree.y"
+#line 1808 "redtree.y"
     {
           (yyval.id) = cur_mid;
           cur_mid = (yyvsp[(2) - (2)].val);
@@ -7055,7 +7057,7 @@ yyreduce:
     break;
 
   case 321:
-#line 1815 "redtree.y"
+#line 1817 "redtree.y"
     {
           reduce_rule(primary__k_def__fname__f_arglist__bodystmt__k_end, 5);
 
@@ -7066,12 +7068,12 @@ yyreduce:
     break;
 
   case 322:
-#line 1822 "redtree.y"
+#line 1824 "redtree.y"
     {lex_state = EXPR_FNAME;;}
     break;
 
   case 323:
-#line 1823 "redtree.y"
+#line 1825 "redtree.y"
     {
           in_single++;
           lex_state = EXPR_ENDFN; /* force for args */
@@ -7080,7 +7082,7 @@ yyreduce:
     break;
 
   case 324:
-#line 1831 "redtree.y"
+#line 1833 "redtree.y"
     {
           reduce_rule(primary__k_def__singleton__dot_or_colon__fname__f_arglist__bodystmt__k_end, 7);
 
@@ -7090,42 +7092,42 @@ yyreduce:
     break;
 
   case 325:
-#line 1838 "redtree.y"
+#line 1840 "redtree.y"
     {
           reduce_rule(primary__keyword_break, 1);
         ;}
     break;
 
   case 326:
-#line 1842 "redtree.y"
+#line 1844 "redtree.y"
     {
           reduce_rule(primary__keyword_next, 1);
         ;}
     break;
 
   case 327:
-#line 1846 "redtree.y"
+#line 1848 "redtree.y"
     {
           reduce_rule(primary__keyword_redo, 1);
         ;}
     break;
 
   case 328:
-#line 1850 "redtree.y"
+#line 1852 "redtree.y"
     {
           reduce_rule(primary__keyword_retry, 1);
         ;}
     break;
 
   case 329:
-#line 1856 "redtree.y"
+#line 1858 "redtree.y"
     {
           reduce_rule(primary_value__primary, 1);
         ;}
     break;
 
   case 330:
-#line 1862 "redtree.y"
+#line 1864 "redtree.y"
     {
           token_info_push("begin");
           reduce_rule(k_begin__keyword_begin, 1);
@@ -7133,7 +7135,7 @@ yyreduce:
     break;
 
   case 331:
-#line 1869 "redtree.y"
+#line 1871 "redtree.y"
     {
           token_info_push("if");
           reduce_rule(k_if__keyword_if, 1);
@@ -7141,147 +7143,147 @@ yyreduce:
     break;
 
   case 332:
-#line 1876 "redtree.y"
+#line 1878 "redtree.y"
     {
           reduce_rule(k_unless__keyword_unless, 1);
         ;}
     break;
 
   case 333:
-#line 1882 "redtree.y"
+#line 1884 "redtree.y"
     {
           reduce_rule(k_while__keyword_while, 1);
         ;}
     break;
 
   case 334:
-#line 1888 "redtree.y"
+#line 1890 "redtree.y"
     {
           reduce_rule(k_until__keyword_until, 1);
         ;}
     break;
 
   case 335:
-#line 1894 "redtree.y"
+#line 1896 "redtree.y"
     {
           reduce_rule(k_case__keyword_case, 1);
         ;}
     break;
 
   case 336:
-#line 1900 "redtree.y"
+#line 1902 "redtree.y"
     {
           reduce_rule(k_for__keyword_for, 1);
         ;}
     break;
 
   case 337:
-#line 1906 "redtree.y"
+#line 1908 "redtree.y"
     {
           reduce_rule(k_class__keyword_class, 1);
         ;}
     break;
 
   case 338:
-#line 1912 "redtree.y"
+#line 1914 "redtree.y"
     {
           reduce_rule(k_module__keyword_module, 1);
         ;}
     break;
 
   case 339:
-#line 1918 "redtree.y"
+#line 1920 "redtree.y"
     {
           reduce_rule(k_def__keyword_def, 1);
         ;}
     break;
 
   case 340:
-#line 1924 "redtree.y"
+#line 1926 "redtree.y"
     {
           reduce_rule(k_end__keyword_end, 1);
         ;}
     break;
 
   case 341:
-#line 1930 "redtree.y"
+#line 1932 "redtree.y"
     {
           reduce_rule(then__term, 1);
         ;}
     break;
 
   case 342:
-#line 1934 "redtree.y"
+#line 1936 "redtree.y"
     {
           reduce_rule(then__keyword_then, 1);
         ;}
     break;
 
   case 343:
-#line 1938 "redtree.y"
+#line 1940 "redtree.y"
     {
           reduce_rule(then__term__keyword_then, 2);
         ;}
     break;
 
   case 344:
-#line 1944 "redtree.y"
+#line 1946 "redtree.y"
     {
           reduce_rule(do__term, 1);
         ;}
     break;
 
   case 345:
-#line 1948 "redtree.y"
+#line 1950 "redtree.y"
     {
           reduce_rule(do__keyword_do_cond, 1);
         ;}
     break;
 
   case 346:
-#line 1954 "redtree.y"
+#line 1956 "redtree.y"
     {
           reduce_rule(if_tail__opt_else, 1);
         ;}
     break;
 
   case 347:
-#line 1958 "redtree.y"
+#line 1960 "redtree.y"
     {
           reduce_rule(if_tail__keyword_elsif__expr_value__then__compstmt__if_tail, 5);
         ;}
     break;
 
   case 348:
-#line 1964 "redtree.y"
+#line 1966 "redtree.y"
     {
           reduce_rule(opt_else__none, 1);
         ;}
     break;
 
   case 349:
-#line 1968 "redtree.y"
+#line 1970 "redtree.y"
     {
           reduce_rule(opt_else__keyword_else__compstmt, 2);
         ;}
     break;
 
   case 350:
-#line 1974 "redtree.y"
+#line 1976 "redtree.y"
     {
           reduce_rule(for_var__lhs, 1);
         ;}
     break;
 
   case 351:
-#line 1978 "redtree.y"
+#line 1980 "redtree.y"
     {
           reduce_rule(for_var__mlhs, 1);
         ;}
     break;
 
   case 352:
-#line 1984 "redtree.y"
+#line 1986 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(f_marg__f_norm_arg, 1);
@@ -7289,35 +7291,35 @@ yyreduce:
     break;
 
   case 353:
-#line 1989 "redtree.y"
+#line 1991 "redtree.y"
     {
           reduce_rule(f_marg__tLPAREN__f_margs__rparen, 3);
         ;}
     break;
 
   case 354:
-#line 1995 "redtree.y"
+#line 1997 "redtree.y"
     {
           reduce_rule(f_marg_list__f_marg, 1);
         ;}
     break;
 
   case 355:
-#line 1999 "redtree.y"
+#line 2001 "redtree.y"
     {
           reduce_rule(f_marg_list__f_marg_list__COMMA__f_marg, 3);
         ;}
     break;
 
   case 356:
-#line 2005 "redtree.y"
+#line 2007 "redtree.y"
     {
           reduce_rule(f_margs__f_marg_list, 1);
         ;}
     break;
 
   case 357:
-#line 2009 "redtree.y"
+#line 2011 "redtree.y"
     {
           assignable((yyvsp[(4) - (4)].val), 0);
           reduce_rule(f_margs__f_marg_list__COMMA__tSTAR__f_norm_arg, 4);
@@ -7325,7 +7327,7 @@ yyreduce:
     break;
 
   case 358:
-#line 2014 "redtree.y"
+#line 2016 "redtree.y"
     {
           assignable((yyvsp[(4) - (6)].val), 0);
           reduce_rule(f_margs__f_marg_list__COMMA__tSTAR__f_norm_arg__COMMA__f_marg_list, 6);
@@ -7333,21 +7335,21 @@ yyreduce:
     break;
 
   case 359:
-#line 2019 "redtree.y"
+#line 2021 "redtree.y"
     {
           reduce_rule(f_margs__f_marg_list__COMMA__tSTAR, 3);
         ;}
     break;
 
   case 360:
-#line 2023 "redtree.y"
+#line 2025 "redtree.y"
     {
           reduce_rule(f_margs__f_marg_list__COMMA__tSTAR__COMMA__f_marg_list, 5);
         ;}
     break;
 
   case 361:
-#line 2027 "redtree.y"
+#line 2029 "redtree.y"
     {
           assignable((yyvsp[(2) - (2)].val), 0);
           reduce_rule(f_margs__tSTAR__f_norm_arg, 2);
@@ -7355,7 +7357,7 @@ yyreduce:
     break;
 
   case 362:
-#line 2032 "redtree.y"
+#line 2034 "redtree.y"
     {
           assignable((yyvsp[(2) - (4)].val), 0);
           reduce_rule(f_margs__tSTAR__f_norm_arg__COMMA__f_marg_list, 4);
@@ -7363,133 +7365,133 @@ yyreduce:
     break;
 
   case 363:
-#line 2037 "redtree.y"
+#line 2039 "redtree.y"
     {
           reduce_rule(f_margs__tSTAR, 1);
         ;}
     break;
 
   case 364:
-#line 2041 "redtree.y"
+#line 2043 "redtree.y"
     {
           reduce_rule(f_margs__tSTAR__COMMA__f_marg_list, 3);
         ;}
     break;
 
   case 365:
-#line 2047 "redtree.y"
+#line 2049 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA__f_block_optarg__COMMA__f_rest_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 366:
-#line 2051 "redtree.y"
+#line 2053 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA__f_block_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 8);
         ;}
     break;
 
   case 367:
-#line 2055 "redtree.y"
+#line 2057 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA__f_block_optarg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 368:
-#line 2059 "redtree.y"
+#line 2061 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA__f_block_optarg__COMMA__f_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 369:
-#line 2063 "redtree.y"
+#line 2065 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 370:
-#line 2067 "redtree.y"
+#line 2069 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA, 2);
         ;}
     break;
 
   case 371:
-#line 2071 "redtree.y"
+#line 2073 "redtree.y"
     {
           reduce_rule(block_param__f_arg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 372:
-#line 2075 "redtree.y"
+#line 2077 "redtree.y"
     {
           reduce_rule(block_param__f_arg__opt_f_block_arg, 2);
         ;}
     break;
 
   case 373:
-#line 2079 "redtree.y"
+#line 2081 "redtree.y"
     {
           reduce_rule(block_param__f_block_optarg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 374:
-#line 2083 "redtree.y"
+#line 2085 "redtree.y"
     {
           reduce_rule(block_param__f_block_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 375:
-#line 2087 "redtree.y"
+#line 2089 "redtree.y"
     {
           reduce_rule(block_param__f_block_optarg__opt_f_block_arg, 2);
         ;}
     break;
 
   case 376:
-#line 2091 "redtree.y"
+#line 2093 "redtree.y"
     {
           reduce_rule(block_param__f_block_optarg__COMMA__f_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 377:
-#line 2095 "redtree.y"
+#line 2097 "redtree.y"
     {
           reduce_rule(block_param__f_rest_arg__opt_f_block_arg, 2);
         ;}
     break;
 
   case 378:
-#line 2099 "redtree.y"
+#line 2101 "redtree.y"
     {
           reduce_rule(block_param__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 379:
-#line 2103 "redtree.y"
+#line 2105 "redtree.y"
     {
           reduce_rule(block_param__f_block_arg, 1);
         ;}
     break;
 
   case 380:
-#line 2109 "redtree.y"
+#line 2111 "redtree.y"
     {
           reduce_rule(opt_block_param__none, 1);
         ;}
     break;
 
   case 381:
-#line 2113 "redtree.y"
+#line 2115 "redtree.y"
     {
           command_start = TRUE;
           reduce_rule(opt_block_param__block_param_def, 1);
@@ -7497,56 +7499,56 @@ yyreduce:
     break;
 
   case 382:
-#line 2120 "redtree.y"
+#line 2122 "redtree.y"
     {
           reduce_rule(block_param_def__OR__opt_bv_decl__OR, 3);
         ;}
     break;
 
   case 383:
-#line 2124 "redtree.y"
+#line 2126 "redtree.y"
     {
           reduce_rule(block_param_def__tOROP, 1);
         ;}
     break;
 
   case 384:
-#line 2128 "redtree.y"
+#line 2130 "redtree.y"
     {
           reduce_rule(block_param_def__OR__block_param__opt_bv_decl__OR, 4);
         ;}
     break;
 
   case 385:
-#line 2135 "redtree.y"
+#line 2137 "redtree.y"
     {
           reduce_rule(opt_bv_decl__none, 1);
         ;}
     break;
 
   case 386:
-#line 2139 "redtree.y"
+#line 2141 "redtree.y"
     {
           reduce_rule(opt_bv_decl__SEMI__bv_decls, 2);
         ;}
     break;
 
   case 387:
-#line 2145 "redtree.y"
+#line 2147 "redtree.y"
     {
           reduce_rule(bv_decls__bvar, 1);
         ;}
     break;
 
   case 388:
-#line 2149 "redtree.y"
+#line 2151 "redtree.y"
     {
           reduce_rule(bv_decls__bv_decls__COMMA__bvar, 3);
         ;}
     break;
 
   case 389:
-#line 2156 "redtree.y"
+#line 2158 "redtree.y"
     {
           new_bv(get_id((yyvsp[(1) - (1)].val)));
           get_value((yyvsp[(1) - (1)].val));
@@ -7555,21 +7557,21 @@ yyreduce:
     break;
 
   case 390:
-#line 2162 "redtree.y"
+#line 2164 "redtree.y"
     {
           reduce_rule(bvar__f_bad_arg, 1);
         ;}
     break;
 
   case 391:
-#line 2167 "redtree.y"
+#line 2169 "redtree.y"
     {
           (yyval.vars) = dyna_push();
         ;}
     break;
 
   case 392:
-#line 2170 "redtree.y"
+#line 2172 "redtree.y"
     {
           (yyval.num) = lpar_beg;
           lpar_beg = ++paren_nest;
@@ -7577,7 +7579,7 @@ yyreduce:
     break;
 
   case 393:
-#line 2176 "redtree.y"
+#line 2178 "redtree.y"
     {
           lpar_beg = (yyvsp[(2) - (4)].num);
           reduce_rule(lambda__f_larglist__lambda_body, 2);
@@ -7587,42 +7589,42 @@ yyreduce:
     break;
 
   case 394:
-#line 2185 "redtree.y"
+#line 2187 "redtree.y"
     {
           reduce_rule(f_larglist__LR__f_args__opt_bv_decl__rparen, 4);
         ;}
     break;
 
   case 395:
-#line 2189 "redtree.y"
+#line 2191 "redtree.y"
     {
           reduce_rule(f_larglist__f_args, 1);
         ;}
     break;
 
   case 396:
-#line 2195 "redtree.y"
+#line 2197 "redtree.y"
     {
           reduce_rule(lambda_body__tLAMBEG__compstmt__RC, 3);
         ;}
     break;
 
   case 397:
-#line 2199 "redtree.y"
+#line 2201 "redtree.y"
     {
           reduce_rule(lambda_body__keyword_do_LAMBDA__compstmt__keyword_end, 3);
         ;}
     break;
 
   case 398:
-#line 2205 "redtree.y"
+#line 2207 "redtree.y"
     {
           (yyvsp[(1) - (1)].vars) = dyna_push();
         ;}
     break;
 
   case 399:
-#line 2211 "redtree.y"
+#line 2213 "redtree.y"
     {
           reduce_rule(do_block__keyword_do_block__opt_block_param__compstmt__keyword_end, 4);
 
@@ -7631,98 +7633,98 @@ yyreduce:
     break;
 
   case 400:
-#line 2219 "redtree.y"
+#line 2221 "redtree.y"
     {
           reduce_rule(block_call__command__do_block, 2);
         ;}
     break;
 
   case 401:
-#line 2223 "redtree.y"
+#line 2225 "redtree.y"
     {
           reduce_rule(block_call__block_call__DOT__operation2__opt_paren_args, 4);
         ;}
     break;
 
   case 402:
-#line 2227 "redtree.y"
+#line 2229 "redtree.y"
     {
           reduce_rule(block_call__block_call__tCOLON2__operation2__opt_paren_args, 4);
         ;}
     break;
 
   case 403:
-#line 2233 "redtree.y"
+#line 2235 "redtree.y"
     {
           reduce_rule(method_call__operation__paren_args, 2);
         ;}
     break;
 
   case 404:
-#line 2237 "redtree.y"
+#line 2239 "redtree.y"
     {
           reduce_rule(method_call__primary_value__DOT__operation2__opt_paren_args, 4);
         ;}
     break;
 
   case 405:
-#line 2241 "redtree.y"
+#line 2243 "redtree.y"
     {
           reduce_rule(method_call__primary_value__tCOLON2__operation2__paren_args, 4);
         ;}
     break;
 
   case 406:
-#line 2245 "redtree.y"
+#line 2247 "redtree.y"
     {
           reduce_rule(method_call__primary_value__tCOLON2__operation3, 3);
         ;}
     break;
 
   case 407:
-#line 2249 "redtree.y"
+#line 2251 "redtree.y"
     {
           reduce_rule(method_call__primary_value__DOT__paren_args, 3);
         ;}
     break;
 
   case 408:
-#line 2253 "redtree.y"
+#line 2255 "redtree.y"
     {
           reduce_rule(method_call__primary_value__tCOLON2__paren_args, 3);
         ;}
     break;
 
   case 409:
-#line 2257 "redtree.y"
+#line 2259 "redtree.y"
     {
           reduce_rule(method_call__keyword_super__paren_args, 2);
         ;}
     break;
 
   case 410:
-#line 2261 "redtree.y"
+#line 2263 "redtree.y"
     {
           reduce_rule(method_call__keyword_super, 1);
         ;}
     break;
 
   case 411:
-#line 2265 "redtree.y"
+#line 2267 "redtree.y"
     {
           reduce_rule(method_call__primary_value__LS__opt_call_args__rbracket, 4);
         ;}
     break;
 
   case 412:
-#line 2271 "redtree.y"
+#line 2273 "redtree.y"
     {
           (yyvsp[(1) - (1)].vars) = dyna_push();
         ;}
     break;
 
   case 413:
-#line 2276 "redtree.y"
+#line 2278 "redtree.y"
     {
           reduce_rule(brace_block__LC__opt_block_param__compstmt__RC, 4);
 
@@ -7731,14 +7733,14 @@ yyreduce:
     break;
 
   case 414:
-#line 2282 "redtree.y"
+#line 2284 "redtree.y"
     {
           (yyvsp[(1) - (1)].vars) = dyna_push();
         ;}
     break;
 
   case 415:
-#line 2287 "redtree.y"
+#line 2289 "redtree.y"
     {
           reduce_rule(brace_block__keyword_do__opt_block_param__compstmt__keyword_end, 4);
 
@@ -7747,280 +7749,280 @@ yyreduce:
     break;
 
   case 416:
-#line 2295 "redtree.y"
+#line 2297 "redtree.y"
     {
           reduce_rule(case_body__keyword_when__args__then__compstmt__cases, 5);
         ;}
     break;
 
   case 417:
-#line 2301 "redtree.y"
+#line 2303 "redtree.y"
     {
           reduce_rule(cases__opt_else, 1);
         ;}
     break;
 
   case 418:
-#line 2305 "redtree.y"
+#line 2307 "redtree.y"
     {
           reduce_rule(cases__case_body, 1);
         ;}
     break;
 
   case 419:
-#line 2311 "redtree.y"
+#line 2313 "redtree.y"
     {
           reduce_rule(opt_rescue__keyword_rescue__exc_list__exc_var__then__compstmt__opt_rescue, 6);
         ;}
     break;
 
   case 420:
-#line 2315 "redtree.y"
+#line 2317 "redtree.y"
     {
           reduce_rule(opt_rescue__none, 1);
         ;}
     break;
 
   case 421:
-#line 2321 "redtree.y"
+#line 2323 "redtree.y"
     {
           reduce_rule(exc_list__arg_value, 1);
         ;}
     break;
 
   case 422:
-#line 2325 "redtree.y"
+#line 2327 "redtree.y"
     {
           reduce_rule(exc_list__mrhs, 1);
         ;}
     break;
 
   case 423:
-#line 2329 "redtree.y"
+#line 2331 "redtree.y"
     {
           reduce_rule(exc_list__none, 1);
         ;}
     break;
 
   case 424:
-#line 2335 "redtree.y"
+#line 2337 "redtree.y"
     {
           reduce_rule(exc_var__tASSOC__lhs, 2);
         ;}
     break;
 
   case 425:
-#line 2339 "redtree.y"
+#line 2341 "redtree.y"
     {
           reduce_rule(exc_var__none, 1);
         ;}
     break;
 
   case 426:
-#line 2345 "redtree.y"
+#line 2347 "redtree.y"
     {
           reduce_rule(opt_ensure__keyword_ensure__compstmt, 2);
         ;}
     break;
 
   case 427:
-#line 2349 "redtree.y"
+#line 2351 "redtree.y"
     {
           reduce_rule(opt_ensure__none, 1);
         ;}
     break;
 
   case 428:
-#line 2355 "redtree.y"
+#line 2357 "redtree.y"
     {
           reduce_rule(literal__numeric, 1);
         ;}
     break;
 
   case 429:
-#line 2359 "redtree.y"
+#line 2361 "redtree.y"
     {
           reduce_rule(literal__symbol, 1);
         ;}
     break;
 
   case 430:
-#line 2363 "redtree.y"
+#line 2365 "redtree.y"
     {
           reduce_rule(literal__dsym, 1);
         ;}
     break;
 
   case 431:
-#line 2369 "redtree.y"
+#line 2371 "redtree.y"
     {
           reduce_rule(strings__string, 1);
         ;}
     break;
 
   case 432:
-#line 2375 "redtree.y"
+#line 2377 "redtree.y"
     {
           reduce_rule(string__tCHAR, 1);
         ;}
     break;
 
   case 433:
-#line 2379 "redtree.y"
+#line 2381 "redtree.y"
     {
           reduce_rule(string__string1, 1);
         ;}
     break;
 
   case 434:
-#line 2383 "redtree.y"
+#line 2385 "redtree.y"
     {
           reduce_rule(string__string__string1, 2);
         ;}
     break;
 
   case 435:
-#line 2389 "redtree.y"
+#line 2391 "redtree.y"
     {
           reduce_rule(string1__tSTRING_BEG__string_contents__tSTRING_END, 3);
         ;}
     break;
 
   case 436:
-#line 2395 "redtree.y"
+#line 2397 "redtree.y"
     {
           reduce_rule(xstring__tXSTRING_BEG__xstring_contents__tSTRING_END, 3);
         ;}
     break;
 
   case 437:
-#line 2401 "redtree.y"
+#line 2403 "redtree.y"
     {
           reduce_rule(regexp__tREGEXP_BEG__regexp_contents__tREGEXP_END, 3);
         ;}
     break;
 
   case 438:
-#line 2407 "redtree.y"
+#line 2409 "redtree.y"
     {
           reduce_rule(words__tWORDS_BEG__SP__tSTRING_END, 3);
         ;}
     break;
 
   case 439:
-#line 2411 "redtree.y"
+#line 2413 "redtree.y"
     {
           reduce_rule(words__tWORDS_BEG__word_list__tSTRING_END, 3);
         ;}
     break;
 
   case 440:
-#line 2417 "redtree.y"
+#line 2419 "redtree.y"
     {
           reduce_rule(word_list__, 0);
         ;}
     break;
 
   case 441:
-#line 2421 "redtree.y"
+#line 2423 "redtree.y"
     {
           reduce_rule(word_list__word_list__word__SP, 3);
         ;}
     break;
 
   case 442:
-#line 2427 "redtree.y"
+#line 2429 "redtree.y"
     {
           reduce_rule(word__string_content, 1);
         ;}
     break;
 
   case 443:
-#line 2431 "redtree.y"
+#line 2433 "redtree.y"
     {
           reduce_rule(word__word__string_content, 2);
         ;}
     break;
 
   case 444:
-#line 2437 "redtree.y"
+#line 2439 "redtree.y"
     {
           reduce_rule(qwords__tQWORDS_BEG__SP__tSTRING_END, 3);
         ;}
     break;
 
   case 445:
-#line 2441 "redtree.y"
+#line 2443 "redtree.y"
     {
           reduce_rule(qwords__tQWORDS_BEG__qword_list__tSTRING_END, 3);
         ;}
     break;
 
   case 446:
-#line 2447 "redtree.y"
+#line 2449 "redtree.y"
     {
           reduce_rule(qword_list__, 0);
         ;}
     break;
 
   case 447:
-#line 2451 "redtree.y"
+#line 2453 "redtree.y"
     {
           reduce_rule(qword_list__qword_list__tSTRING_CONTENT__SP, 3);
         ;}
     break;
 
   case 448:
-#line 2457 "redtree.y"
+#line 2459 "redtree.y"
     {
           reduce_rule(string_contents__, 0);
         ;}
     break;
 
   case 449:
-#line 2461 "redtree.y"
+#line 2463 "redtree.y"
     {
           reduce_rule(string_contents__string_contents__string_content, 2);
         ;}
     break;
 
   case 450:
-#line 2467 "redtree.y"
+#line 2469 "redtree.y"
     {
           reduce_rule(xstring_contents__, 0);
         ;}
     break;
 
   case 451:
-#line 2471 "redtree.y"
+#line 2473 "redtree.y"
     {
           reduce_rule(xstring_contents__xstring_contents__string_content, 2);
         ;}
     break;
 
   case 452:
-#line 2477 "redtree.y"
+#line 2479 "redtree.y"
     {
           reduce_rule(regexp_contents__, 0);
         ;}
     break;
 
   case 453:
-#line 2481 "redtree.y"
+#line 2483 "redtree.y"
     {
           reduce_rule(regexp_contents__regexp_contents__string_content, 2);
         ;}
     break;
 
   case 454:
-#line 2487 "redtree.y"
+#line 2489 "redtree.y"
     {
           reduce_rule(string_content__tSTRING_CONTENT, 1);
         ;}
     break;
 
   case 455:
-#line 2491 "redtree.y"
+#line 2493 "redtree.y"
     {
           (yyval.node) = lex_strterm;
           lex_strterm = 0;
@@ -8029,7 +8031,7 @@ yyreduce:
     break;
 
   case 456:
-#line 2497 "redtree.y"
+#line 2499 "redtree.y"
     {
           lex_strterm = (yyvsp[(2) - (3)].node);
           reduce_rule(string_content__tSTRING_DVAR__string_dvar, 2);
@@ -8037,7 +8039,7 @@ yyreduce:
     break;
 
   case 457:
-#line 2502 "redtree.y"
+#line 2504 "redtree.y"
     {
           (yyvsp[(1) - (1)].val) = cond_stack;
           (yyval.val) = cmdarg_stack;
@@ -8047,7 +8049,7 @@ yyreduce:
     break;
 
   case 458:
-#line 2508 "redtree.y"
+#line 2510 "redtree.y"
     {
           (yyval.node) = lex_strterm;
           lex_strterm = 0;
@@ -8056,7 +8058,7 @@ yyreduce:
     break;
 
   case 459:
-#line 2514 "redtree.y"
+#line 2516 "redtree.y"
     {
           cond_stack = (yyvsp[(1) - (5)].val);
           cmdarg_stack = (yyvsp[(2) - (5)].val);
@@ -8066,35 +8068,35 @@ yyreduce:
     break;
 
   case 460:
-#line 2523 "redtree.y"
+#line 2525 "redtree.y"
     {
           reduce_rule(string_dvar__tGVAR, 1);
         ;}
     break;
 
   case 461:
-#line 2527 "redtree.y"
+#line 2529 "redtree.y"
     {
           reduce_rule(string_dvar__tIVAR, 1);
         ;}
     break;
 
   case 462:
-#line 2531 "redtree.y"
+#line 2533 "redtree.y"
     {
           reduce_rule(string_dvar__tCVAR, 1);
         ;}
     break;
 
   case 463:
-#line 2535 "redtree.y"
+#line 2537 "redtree.y"
     {
           reduce_rule(string_dvar__backref, 1);
         ;}
     break;
 
   case 464:
-#line 2541 "redtree.y"
+#line 2543 "redtree.y"
     {
           lex_state = EXPR_END;
           reduce_rule(symbol__tSYMBEG__sym, 2);
@@ -8102,35 +8104,35 @@ yyreduce:
     break;
 
   case 465:
-#line 2548 "redtree.y"
+#line 2550 "redtree.y"
     {
           reduce_rule(sym__fname, 1);
         ;}
     break;
 
   case 466:
-#line 2552 "redtree.y"
+#line 2554 "redtree.y"
     {
           reduce_rule(sym__tIVAR, 1);
         ;}
     break;
 
   case 467:
-#line 2556 "redtree.y"
+#line 2558 "redtree.y"
     {
           reduce_rule(sym__tGVAR, 1);
         ;}
     break;
 
   case 468:
-#line 2560 "redtree.y"
+#line 2562 "redtree.y"
     {
           reduce_rule(sym__tCVAR, 1);
         ;}
     break;
 
   case 469:
-#line 2566 "redtree.y"
+#line 2568 "redtree.y"
     {
           lex_state = EXPR_END;
           reduce_rule(dsym__tSYMBEG__xstring_contents__tSTRING_END, 3);
@@ -8138,35 +8140,35 @@ yyreduce:
     break;
 
   case 470:
-#line 2573 "redtree.y"
+#line 2575 "redtree.y"
     {
           reduce_rule(numeric__tINTEGER, 1);
         ;}
     break;
 
   case 471:
-#line 2577 "redtree.y"
+#line 2579 "redtree.y"
     {
           reduce_rule(numeric__tFLOAT, 1);
         ;}
     break;
 
   case 472:
-#line 2581 "redtree.y"
+#line 2583 "redtree.y"
     {
           reduce_rule(numeric__tUMINUS_NUM__tINTEGER, 2);
         ;}
     break;
 
   case 473:
-#line 2585 "redtree.y"
+#line 2587 "redtree.y"
     {
           reduce_rule(numeric__tUMINUS_NUM__tFLOAT, 2);
         ;}
     break;
 
   case 474:
-#line 2591 "redtree.y"
+#line 2593 "redtree.y"
     {
           reduce_rule(user_variable__tIDENTIFIER, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8174,7 +8176,7 @@ yyreduce:
     break;
 
   case 475:
-#line 2596 "redtree.y"
+#line 2598 "redtree.y"
     {
           reduce_rule(user_variable__tIVAR, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8182,7 +8184,7 @@ yyreduce:
     break;
 
   case 476:
-#line 2601 "redtree.y"
+#line 2603 "redtree.y"
     {
           reduce_rule(user_variable__tGVAR, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8190,7 +8192,7 @@ yyreduce:
     break;
 
   case 477:
-#line 2606 "redtree.y"
+#line 2608 "redtree.y"
     {
           reduce_rule(user_variable__tCONSTANT, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8198,7 +8200,7 @@ yyreduce:
     break;
 
   case 478:
-#line 2611 "redtree.y"
+#line 2613 "redtree.y"
     {
           reduce_rule(user_variable__tCVAR, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8206,7 +8208,7 @@ yyreduce:
     break;
 
   case 479:
-#line 2618 "redtree.y"
+#line 2620 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_nil, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8214,7 +8216,7 @@ yyreduce:
     break;
 
   case 480:
-#line 2623 "redtree.y"
+#line 2625 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_self, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8222,7 +8224,7 @@ yyreduce:
     break;
 
   case 481:
-#line 2628 "redtree.y"
+#line 2630 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_true, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8230,7 +8232,7 @@ yyreduce:
     break;
 
   case 482:
-#line 2633 "redtree.y"
+#line 2635 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_false, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8238,7 +8240,7 @@ yyreduce:
     break;
 
   case 483:
-#line 2638 "redtree.y"
+#line 2640 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_FILE, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8246,7 +8248,7 @@ yyreduce:
     break;
 
   case 484:
-#line 2643 "redtree.y"
+#line 2645 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_LINE, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8254,7 +8256,7 @@ yyreduce:
     break;
 
   case 485:
-#line 2648 "redtree.y"
+#line 2650 "redtree.y"
     {
           reduce_rule(keyword_variable__keyword_ENCODING, 1);
           (yyval.val) = (yyvsp[(1) - (1)].val);
@@ -8262,7 +8264,7 @@ yyreduce:
     break;
 
   case 486:
-#line 2655 "redtree.y"
+#line 2657 "redtree.y"
     {
           if (id_is_var(get_id((yyvsp[(1) - (1)].val)))) {
             reduce_rule(var_ref__user_variable, 1);
@@ -8274,14 +8276,14 @@ yyreduce:
     break;
 
   case 487:
-#line 2664 "redtree.y"
+#line 2666 "redtree.y"
     {
           reduce_rule(var_ref__keyword_variable, 1);
         ;}
     break;
 
   case 488:
-#line 2670 "redtree.y"
+#line 2672 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(var_lhs__user_variable, 1);
@@ -8289,7 +8291,7 @@ yyreduce:
     break;
 
   case 489:
-#line 2675 "redtree.y"
+#line 2677 "redtree.y"
     {
           assignable((yyvsp[(1) - (1)].val), 0);
           reduce_rule(var_field__keyword_variable, 1);
@@ -8297,42 +8299,42 @@ yyreduce:
     break;
 
   case 490:
-#line 2682 "redtree.y"
+#line 2684 "redtree.y"
     {
           reduce_rule(backref__tNTH_REF, 1);
         ;}
     break;
 
   case 491:
-#line 2686 "redtree.y"
+#line 2688 "redtree.y"
     {
           reduce_rule(backref__tBACK_REF, 1);
         ;}
     break;
 
   case 492:
-#line 2692 "redtree.y"
+#line 2694 "redtree.y"
     {
           reduce_rule(superclass__term, 1);
         ;}
     break;
 
   case 493:
-#line 2696 "redtree.y"
+#line 2698 "redtree.y"
     {
           lex_state = EXPR_BEG;
         ;}
     break;
 
   case 494:
-#line 2700 "redtree.y"
+#line 2702 "redtree.y"
     {
           reduce_rule(superclass__LT__expr_value__term, 3);
         ;}
     break;
 
   case 495:
-#line 2704 "redtree.y"
+#line 2706 "redtree.y"
     {
           yyerrok;
           reduce_rule(superclass__error__term, 2);
@@ -8340,7 +8342,7 @@ yyreduce:
     break;
 
   case 496:
-#line 2711 "redtree.y"
+#line 2713 "redtree.y"
     {
           reduce_rule(f_arglist__LR__f_args__rparen, 3);
 
@@ -8350,154 +8352,154 @@ yyreduce:
     break;
 
   case 497:
-#line 2718 "redtree.y"
+#line 2720 "redtree.y"
     {
           reduce_rule(f_arglist__f_args__term, 2);
         ;}
     break;
 
   case 498:
-#line 2724 "redtree.y"
+#line 2726 "redtree.y"
     {
           reduce_rule(f_args__f_arg__COMMA__f_optarg__COMMA__f_rest_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 499:
-#line 2728 "redtree.y"
+#line 2730 "redtree.y"
     {
           reduce_rule(f_args__f_arg__COMMA__f_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 8);
         ;}
     break;
 
   case 500:
-#line 2732 "redtree.y"
+#line 2734 "redtree.y"
     {
           reduce_rule(f_args__f_arg__COMMA__f_optarg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 501:
-#line 2736 "redtree.y"
+#line 2738 "redtree.y"
     {
           reduce_rule(f_args__f_arg__COMMA__f_optarg__COMMA__f_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 502:
-#line 2740 "redtree.y"
+#line 2742 "redtree.y"
     {
           reduce_rule(f_args__f_arg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 503:
-#line 2744 "redtree.y"
+#line 2746 "redtree.y"
     {
           reduce_rule(f_args__f_arg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 504:
-#line 2748 "redtree.y"
+#line 2750 "redtree.y"
     {
           reduce_rule(f_args__f_arg__opt_f_block_arg, 2);
         ;}
     break;
 
   case 505:
-#line 2752 "redtree.y"
+#line 2754 "redtree.y"
     {
           reduce_rule(f_args__f_optarg__COMMA__f_rest_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 506:
-#line 2756 "redtree.y"
+#line 2758 "redtree.y"
     {
           reduce_rule(f_args__f_optarg__COMMA__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 6);
         ;}
     break;
 
   case 507:
-#line 2760 "redtree.y"
+#line 2762 "redtree.y"
     {
           reduce_rule(f_args__f_optarg__opt_f_block_arg, 2);
         ;}
     break;
 
   case 508:
-#line 2764 "redtree.y"
+#line 2766 "redtree.y"
     {
           reduce_rule(f_args__f_optarg__COMMA__f_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 509:
-#line 2768 "redtree.y"
+#line 2770 "redtree.y"
     {
           reduce_rule(f_args__f_rest_arg__opt_f_block_arg, 2);
         ;}
     break;
 
   case 510:
-#line 2772 "redtree.y"
+#line 2774 "redtree.y"
     {
           reduce_rule(f_args__f_rest_arg__COMMA__f_arg__opt_f_block_arg, 4);
         ;}
     break;
 
   case 511:
-#line 2776 "redtree.y"
+#line 2778 "redtree.y"
     {
           reduce_rule(f_args__f_block_arg, 1);
         ;}
     break;
 
   case 512:
-#line 2780 "redtree.y"
+#line 2782 "redtree.y"
     {
           reduce_rule(f_args__, 0);
         ;}
     break;
 
   case 513:
-#line 2786 "redtree.y"
+#line 2788 "redtree.y"
     {
           reduce_rule(f_bad_arg__tCONSTANT, 1);
         ;}
     break;
 
   case 514:
-#line 2790 "redtree.y"
+#line 2792 "redtree.y"
     {
           reduce_rule(f_bad_arg__tIVAR, 1);
         ;}
     break;
 
   case 515:
-#line 2794 "redtree.y"
+#line 2796 "redtree.y"
     {
           reduce_rule(f_bad_arg__tGVAR, 1);
         ;}
     break;
 
   case 516:
-#line 2798 "redtree.y"
+#line 2800 "redtree.y"
     {
           reduce_rule(f_bad_arg__tCVAR, 1);
         ;}
     break;
 
   case 517:
-#line 2804 "redtree.y"
+#line 2806 "redtree.y"
     {
           reduce_rule(f_norm_arg__f_bad_arg, 1);
         ;}
     break;
 
   case 518:
-#line 2808 "redtree.y"
+#line 2810 "redtree.y"
     {
           formal_argument(get_id((yyvsp[(1) - (1)].val)));
           reduce_rule(f_norm_arg__tIDENTIFIER, 1);
@@ -8506,7 +8508,7 @@ yyreduce:
     break;
 
   case 519:
-#line 2816 "redtree.y"
+#line 2818 "redtree.y"
     {
           arg_var(get_id((yyvsp[(1) - (1)].val)));
           get_value((yyvsp[(1) - (1)].val));
@@ -8515,7 +8517,7 @@ yyreduce:
     break;
 
   case 520:
-#line 2822 "redtree.y"
+#line 2824 "redtree.y"
     {
           ID tid = internal_id();
           arg_var(tid);
@@ -8525,21 +8527,21 @@ yyreduce:
     break;
 
   case 521:
-#line 2831 "redtree.y"
+#line 2833 "redtree.y"
     {
           reduce_rule(f_arg__f_arg_item, 1);
         ;}
     break;
 
   case 522:
-#line 2835 "redtree.y"
+#line 2837 "redtree.y"
     {
           reduce_rule(f_arg__f_arg__COMMA__f_arg_item, 3);
         ;}
     break;
 
   case 523:
-#line 2841 "redtree.y"
+#line 2843 "redtree.y"
     {
           arg_var(formal_argument(get_id((yyvsp[(1) - (3)].val))));
           assignable((yyvsp[(1) - (3)].val), (yyvsp[(3) - (3)].val));
@@ -8548,7 +8550,7 @@ yyreduce:
     break;
 
   case 524:
-#line 2849 "redtree.y"
+#line 2851 "redtree.y"
     {
           arg_var(formal_argument(get_id((yyvsp[(1) - (3)].val))));
           assignable((yyvsp[(1) - (3)].val), (yyvsp[(3) - (3)].val));
@@ -8557,49 +8559,49 @@ yyreduce:
     break;
 
   case 525:
-#line 2857 "redtree.y"
+#line 2859 "redtree.y"
     {
           reduce_rule(f_block_optarg__f_block_opt, 1);
         ;}
     break;
 
   case 526:
-#line 2861 "redtree.y"
+#line 2863 "redtree.y"
     {
           reduce_rule(f_block_optarg__f_block_optarg__COMMA__f_block_opt, 3);
         ;}
     break;
 
   case 527:
-#line 2867 "redtree.y"
+#line 2869 "redtree.y"
     {
           reduce_rule(f_optarg__f_opt, 1);
         ;}
     break;
 
   case 528:
-#line 2871 "redtree.y"
+#line 2873 "redtree.y"
     {
           reduce_rule(f_optarg__f_optarg__COMMA__f_opt, 3);
         ;}
     break;
 
   case 529:
-#line 2877 "redtree.y"
+#line 2879 "redtree.y"
     {
           reduce_rule(restarg_mark__TIMES, 1);
         ;}
     break;
 
   case 530:
-#line 2881 "redtree.y"
+#line 2883 "redtree.y"
     {
           reduce_rule(restarg_mark__tSTAR, 1);
         ;}
     break;
 
   case 531:
-#line 2887 "redtree.y"
+#line 2889 "redtree.y"
     {
           arg_var(shadowing_lvar(get_id((yyvsp[(2) - (2)].val))));
           reduce_rule(f_rest_arg__restarg_mark__tIDENTIFIER, 2);
@@ -8607,28 +8609,28 @@ yyreduce:
     break;
 
   case 532:
-#line 2892 "redtree.y"
+#line 2894 "redtree.y"
     {
           reduce_rule(f_rest_arg__restarg_mark, 1);
         ;}
     break;
 
   case 533:
-#line 2898 "redtree.y"
+#line 2900 "redtree.y"
     {
           reduce_rule(blkarg_mark__AND, 1);
         ;}
     break;
 
   case 534:
-#line 2902 "redtree.y"
+#line 2904 "redtree.y"
     {
           reduce_rule(blkarg_mark__tAMPER, 1);
         ;}
     break;
 
   case 535:
-#line 2908 "redtree.y"
+#line 2910 "redtree.y"
     {
           arg_var(shadowing_lvar(get_id((yyvsp[(2) - (2)].val))));
           reduce_rule(f_block_arg__blkarg_mark__tIDENTIFIER, 2);
@@ -8636,250 +8638,250 @@ yyreduce:
     break;
 
   case 536:
-#line 2915 "redtree.y"
+#line 2917 "redtree.y"
     {
           reduce_rule(opt_f_block_arg__COMMA__f_block_arg, 2);
         ;}
     break;
 
   case 537:
-#line 2919 "redtree.y"
+#line 2921 "redtree.y"
     {
           reduce_rule(opt_f_block_arg__none, 1);
         ;}
     break;
 
   case 538:
-#line 2925 "redtree.y"
+#line 2927 "redtree.y"
     {
           reduce_rule(singleton__var_ref, 1);
         ;}
     break;
 
   case 539:
-#line 2928 "redtree.y"
+#line 2930 "redtree.y"
     {lex_state = EXPR_BEG;;}
     break;
 
   case 540:
-#line 2929 "redtree.y"
+#line 2931 "redtree.y"
     {
           reduce_rule(singleton__LR__expr__rparen, 3);
         ;}
     break;
 
   case 541:
-#line 2935 "redtree.y"
+#line 2937 "redtree.y"
     {
           reduce_rule(assoc_list__none, 1);
         ;}
     break;
 
   case 542:
-#line 2939 "redtree.y"
+#line 2941 "redtree.y"
     {
           reduce_rule(assoc_list__assocs__trailer, 2);
         ;}
     break;
 
   case 543:
-#line 2945 "redtree.y"
+#line 2947 "redtree.y"
     {
           reduce_rule(assocs__assoc, 1);
         ;}
     break;
 
   case 544:
-#line 2949 "redtree.y"
+#line 2951 "redtree.y"
     {
           reduce_rule(assocs__assocs__COMMA__assoc, 3);
         ;}
     break;
 
   case 545:
-#line 2955 "redtree.y"
+#line 2957 "redtree.y"
     {
           reduce_rule(assoc__arg_value__tASSOC__arg_value, 3);
         ;}
     break;
 
   case 546:
-#line 2959 "redtree.y"
+#line 2961 "redtree.y"
     {
           reduce_rule(assoc__tLABEL__arg_value, 2);
         ;}
     break;
 
   case 547:
-#line 2965 "redtree.y"
+#line 2967 "redtree.y"
     {
           reduce_rule(operation__tIDENTIFIER, 1);
         ;}
     break;
 
   case 548:
-#line 2969 "redtree.y"
+#line 2971 "redtree.y"
     {
           reduce_rule(operation__tCONSTANT, 1);
         ;}
     break;
 
   case 549:
-#line 2973 "redtree.y"
+#line 2975 "redtree.y"
     {
           reduce_rule(operation__tFID, 1);
         ;}
     break;
 
   case 550:
-#line 2979 "redtree.y"
+#line 2981 "redtree.y"
     {
           reduce_rule(operation2__tIDENTIFIER, 1);
         ;}
     break;
 
   case 551:
-#line 2983 "redtree.y"
+#line 2985 "redtree.y"
     {
           reduce_rule(operation2__tCONSTANT, 1);
         ;}
     break;
 
   case 552:
-#line 2987 "redtree.y"
+#line 2989 "redtree.y"
     {
           reduce_rule(operation2__tFID, 1);
         ;}
     break;
 
   case 553:
-#line 2991 "redtree.y"
+#line 2993 "redtree.y"
     {
           reduce_rule(operation2__op, 1);
         ;}
     break;
 
   case 554:
-#line 2997 "redtree.y"
+#line 2999 "redtree.y"
     {
           reduce_rule(operation3__tIDENTIFIER, 1);
         ;}
     break;
 
   case 555:
-#line 3001 "redtree.y"
+#line 3003 "redtree.y"
     {
           reduce_rule(operation3__tFID, 1);
         ;}
     break;
 
   case 556:
-#line 3005 "redtree.y"
+#line 3007 "redtree.y"
     {
           reduce_rule(operation3__op, 1);
         ;}
     break;
 
   case 557:
-#line 3011 "redtree.y"
+#line 3013 "redtree.y"
     {
           reduce_rule(dot_or_colon__DOT, 1);
         ;}
     break;
 
   case 558:
-#line 3015 "redtree.y"
+#line 3017 "redtree.y"
     {
           reduce_rule(dot_or_colon__tCOLON2, 1);
         ;}
     break;
 
   case 559:
-#line 3021 "redtree.y"
+#line 3023 "redtree.y"
     {
           reduce_rule(opt_terms__, 0);
         ;}
     break;
 
   case 560:
-#line 3025 "redtree.y"
+#line 3027 "redtree.y"
     {
           reduce_rule(opt_terms__terms, 1);
         ;}
     break;
 
   case 561:
-#line 3031 "redtree.y"
+#line 3033 "redtree.y"
     {
           reduce_rule(opt_nl__, 0);
         ;}
     break;
 
   case 562:
-#line 3035 "redtree.y"
+#line 3037 "redtree.y"
     {
           reduce_rule(opt_nl__NL, 1);
         ;}
     break;
 
   case 563:
-#line 3041 "redtree.y"
+#line 3043 "redtree.y"
     {
           reduce_rule(rparen__opt_nl__RR, 2);
         ;}
     break;
 
   case 564:
-#line 3047 "redtree.y"
+#line 3049 "redtree.y"
     {
           reduce_rule(rbracket__opt_nl__RS, 2);
         ;}
     break;
 
   case 565:
-#line 3053 "redtree.y"
+#line 3055 "redtree.y"
     {
           reduce_rule(trailer__, 0);
         ;}
     break;
 
   case 566:
-#line 3057 "redtree.y"
+#line 3059 "redtree.y"
     {
           reduce_rule(trailer__NL, 1);
         ;}
     break;
 
   case 567:
-#line 3061 "redtree.y"
+#line 3063 "redtree.y"
     {
           reduce_rule(trailer__COMMA, 1);
         ;}
     break;
 
   case 568:
-#line 3067 "redtree.y"
+#line 3069 "redtree.y"
     {
           yyerrok; reduce_rule(term__SEMI, 1);
         ;}
     break;
 
   case 569:
-#line 3071 "redtree.y"
+#line 3073 "redtree.y"
     {
           reduce_rule(term__NL, 1);
         ;}
     break;
 
   case 570:
-#line 3077 "redtree.y"
+#line 3079 "redtree.y"
     {
           reduce_rule(terms__term, 1);
         ;}
     break;
 
   case 571:
-#line 3081 "redtree.y"
+#line 3083 "redtree.y"
     {
           yyerrok;
           reduce_rule(terms__terms__SEMI, 2);
@@ -8887,7 +8889,7 @@ yyreduce:
     break;
 
   case 572:
-#line 3088 "redtree.y"
+#line 3090 "redtree.y"
     {
           reduce_rule(none__, 0);
         ;}
@@ -8895,7 +8897,7 @@ yyreduce:
 
 
 /* Line 1267 of yacc.c.  */
-#line 8896 "ripper.c"
+#line 8898 "ripper.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -9109,7 +9111,7 @@ yyreturn:
 }
 
 
-#line 3092 "redtree.y"
+#line 3094 "redtree.y"
 
 # undef parser
 # undef yylex
@@ -12430,7 +12432,7 @@ redtree_parse(VALUE self)
     }
     parser->parsing_thread = rb_thread_current();
     rb_ensure(redtree_parse0, self, redtree_ensure, self);
-
+    parser->result = rb_tree_wrap(rb_cTree, parser->parse_tree);
     return parser->result;
 }
 
@@ -12531,6 +12533,10 @@ Init_redtree(void)
     VALUE Redtree;
 
     Redtree = rb_define_class("Redtree", rb_cObject);
+    rb_cTree = rb_define_class_under(Redtree, "Tree", rb_cObject);
+    rb_undef_method(CLASS_OF(rb_cTree), "new");
+    rb_define_method(rb_cTree, "sequence", rb_tree_sequence, 0);
+
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);
     rb_define_method(Redtree, "initialize", redtree_initialize, -1);

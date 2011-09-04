@@ -58,6 +58,57 @@ void redtree_sequence_push(struct redtree* tree, int32_t entry) {
   }
 }
 
+static void
+tree_mark(void *ptr)
+{
+    struct redtree *tree = (struct redtree*)ptr;
+    rb_gc_mark(tree->source);
+}
+
+static void
+tree_free(void *ptr)
+{
+    struct redtree *p = (struct redtree*)ptr;
+
+    xfree(p->tokens);
+    xfree(p->token_locations);
+    xfree(p->sequence);
+    xfree(p);
+}
+
+static size_t
+tree_memsize(const void *ptr)
+{
+    struct redtree *p = (struct redtree*)ptr;
+    size_t size = sizeof(*p);
+
+    size += sizeof(redtree_token) * p->token_size;
+    size += sizeof(struct token_location) * p->token_size;
+    size += sizeof(redtree_sequence_entry) * p->sequence_size;
+
+    return size;
+}
+
+static const rb_data_type_t tree_data_type =  {"redtree",
+    tree_mark, tree_free, tree_memsize,
+};
+
+
+VALUE rb_tree_wrap(VALUE klass, struct redtree* tree) {
+  return TypedData_Wrap_Struct(klass, &tree_data_type, tree);
+}
+
+VALUE rb_tree_sequence(VALUE self) {
+  struct redtree *tree;
+  uint32_t i;
+  VALUE result = rb_ary_new();
+  TypedData_Get_Struct(self, struct redtree, &tree_data_type, tree);
+
+  for (i=0; i<tree->sequence_count; ++i) {
+    rb_ary_push(result, INT2FIX(tree->sequence[i]));
+  }
+  return result;
+}
 
 #undef INITIAL_TOKEN_COUNT
 #undef INITIAL_SEQUENCE_COUNT

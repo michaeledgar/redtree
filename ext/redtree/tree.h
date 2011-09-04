@@ -13,7 +13,7 @@ struct redtree {
     uint16_t start_col;
     uint16_t end_col;
   } *token_locations;
-  int32_t *sequence;
+  redtree_sequence_entry *sequence;
   uint32_t token_count;
   uint32_t sequence_count;
   uint32_t token_size;
@@ -31,5 +31,8 @@ void redtree_lex_token(struct redtree* tree,
 void redtree_shift_token(struct redtree* tree, uint32_t token_index);
 void redtree_reduce_rule(struct redtree* tree, uint32_t rule_index);
 void redtree_sequence_push(struct redtree* tree, int32_t entry);
+
+VALUE rb_tree_wrap(VALUE klass, struct redtree* tree);
+VALUE rb_tree_sequence(VALUE wrapped);
 
 #endif
