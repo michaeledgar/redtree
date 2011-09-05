@@ -29,7 +29,7 @@
 #include <ctype.h>
 
 VALUE rb_cTree, rb_cNode, rb_cToken;
-VALUE rb_aNames;
+VALUE rb_aNames, rb_aTokenNames;
 
 #define numberof(array) (int)(sizeof(array) / sizeof((array)[0]))
 
@@ -209,7 +209,6 @@ struct parser_params {
     enum lex_state_e parser_lex_state;
     stack_type parser_cond_stack;
     stack_type parser_cmdarg_stack;
-    int parser_class_nest;
     int parser_paren_nest;
     int parser_lpar_beg;
     int parser_in_single;
@@ -228,7 +227,6 @@ struct parser_params {
     const char *parser_lex_pend;
     int parser_heredoc_end;
     int parser_command_start;
-    NODE *parser_deferred_nodes;
     long parser_lex_gets_ptr;
     VALUE (*parser_lex_gets)(struct parser_params*,VALUE);
     struct local_vars *parser_lvtbl;
@@ -250,6 +248,7 @@ struct parser_params {
     VALUE delayed;
     int delayed_line;
     int delayed_col;
+    uint32_t tok_to_shift;
 
     VALUE value;
     VALUE result;
@@ -275,7 +274,6 @@ static int parser_yyerror(struct parser_params*, const char*);
 #define lex_state   (parser->parser_lex_state)
 #define cond_stack    (parser->parser_cond_stack)
 #define cmdarg_stack    (parser->parser_cmdarg_stack)
-#define class_nest    (parser->parser_class_nest)
 #define paren_nest    (parser->parser_paren_nest)
 #define lpar_beg    (parser->parser_lpar_beg)
 #define in_single   (parser->parser_in_single)
@@ -294,7 +292,6 @@ static int parser_yyerror(struct parser_params*, const char*);
 #define lex_pend    (parser->parser_lex_pend)
 #define heredoc_end   (parser->parser_heredoc_end)
 #define command_start   (parser->parser_command_start)
-#define deferred_nodes    (parser->parser_deferred_nodes)
 #define lex_gets_ptr    (parser->parser_lex_gets_ptr)
 #define lex_gets    (parser->parser_lex_gets)
 #define lvtbl     (parser->parser_lvtbl)
@@ -424,13 +421,6 @@ void redtree_stack_push(struct parser_params* parser, int32_t val) {
 static ID redtree_id_gets;
 
 static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, int rhs_size);
-static VALUE redtree_dispatch0(struct parser_params*,ID);
-static VALUE redtree_dispatch1(struct parser_params*,ID,VALUE);
-static VALUE redtree_dispatch2(struct parser_params*,ID,VALUE,VALUE);
-static VALUE redtree_dispatch3(struct parser_params*,ID,VALUE,VALUE,VALUE);
-static VALUE redtree_dispatch4(struct parser_params*,ID,VALUE,VALUE,VALUE,VALUE);
-static VALUE redtree_dispatch5(struct parser_params*,ID,VALUE,VALUE,VALUE,VALUE,VALUE);
-
 #define reduce_rule(name, size) redtree_reduce(parser, TOKEN_PASTE(redtree_rulenum_, name), size)
 
 #define yyparse redtree_yyparse
@@ -566,9 +556,7 @@ static void redtree_compile_error(struct parser_params*, const char *fmt, ...);
 %type <val> mlhs mlhs_head mlhs_basic mlhs_item mlhs_node mlhs_post mlhs_inner
 %type <val>   fsym keyword_variable user_variable sym symbol operation operation2 operation3
 %type <val>   cname fname op f_rest_arg f_block_arg opt_f_block_arg f_norm_arg f_bad_arg
-/*
-  TODO(adgar): Figure out why type clashes w/ default action require <num> below
-*/
+
 %type <val> program reswords then do dot_or_colon
 
 %token tUPLUS   /* unary+ */
@@ -5640,7 +5628,7 @@ yylex(void *p)
 #endif
     t = parser_yylex(parser);
 
-    redtree_lex_token(parser->parse_tree, t, 0, 0, 0, 0);
+    parser->tok_to_shift = redtree_lex_token(parser->parse_tree, t, 0, 0, 0, 0);
     if (!NIL_P(parser->delayed)) {
   // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, t);
   return t;
@@ -5974,7 +5962,6 @@ parser_initialize(struct parser_params *parser)
     parser->parser_lex_strterm = 0;
     parser->parser_cond_stack = 0;
     parser->parser_cmdarg_stack = 0;
-    parser->parser_class_nest = 0;
     parser->parser_paren_nest = 0;
     parser->parser_lpar_beg = 0;
     parser->parser_in_single = 0;
@@ -5987,7 +5974,6 @@ parser_initialize(struct parser_params *parser)
     parser->parser_toksiz = 0;
     parser->parser_heredoc_end = 0;
     parser->parser_command_start = TRUE;
-    parser->parser_deferred_nodes = 0;
     parser->parser_lex_pbeg = 0;
     parser->parser_lex_p = 0;
     parser->parser_lex_pend = 0;
@@ -6004,6 +5990,7 @@ parser_initialize(struct parser_params *parser)
     parser->toplevel_p = TRUE;
     parser->parse_tree = redtree_allocate();
     parser->redtree_stack = new_redtree_stack();
+    parser->tok_to_shift = 0;
 #ifdef YYMALLOC
     parser->heap = NULL;
 #endif
@@ -6019,7 +6006,6 @@ parser_mark(void *ptr)
     struct parser_params *p = (struct parser_params*)ptr;
 
     rb_gc_mark((VALUE)p->parser_lex_strterm);
-    rb_gc_mark((VALUE)p->parser_deferred_nodes);
     rb_gc_mark(p->parser_lex_input);
     rb_gc_mark(p->parser_lex_lastline);
     rb_gc_mark(p->parser_lex_nextline);
@@ -6078,68 +6064,18 @@ static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, i
   // look up size of rhs to pop from parser->redtree_stack
   // unsigned int rhs_size = yyr2[yyn];
   // pop from stack TODO(adgar): make volatile for speed
-  int32_t* popped = redtree_stack_pop_n(parser, rhs_size);
+  int32_t* popped = redtree_stack_pop_n_volatile(parser, rhs_size);
   // for each on RHS
   while (rhs_size--) {
     pattern <<= 2;
     int32_t val = *(popped + rhs_size);
-    redtree_sequence_push(parser->parse_tree, *popped + rhs_size);
-    pattern |= 0x2 | (val < 0);
+    pattern |= (0x2 | (val < 0));
+    if (val < 0) val = -val;
+    redtree_sequence_push(parser->parse_tree, val);
   }
   redtree_sequence_push(parser->parse_tree, pattern);
   redtree_sequence_push(parser->parse_tree, -redtree_rule_num);
-  redtree_stack_push(parser, parser->parse_tree->sequence_count - 1);
-}
-
-static VALUE
-redtree_dispatch0(struct parser_params *parser, ID mid)
-{
-    return rb_funcall(parser->value, mid, 0);
-}
-
-static VALUE
-redtree_dispatch1(struct parser_params *parser, ID mid, VALUE a)
-{
-    validate(a);
-    return rb_funcall(parser->value, mid, 1, a);
-}
-
-static VALUE
-redtree_dispatch2(struct parser_params *parser, ID mid, VALUE a, VALUE b)
-{
-    validate(a);
-    validate(b);
-    return rb_funcall(parser->value, mid, 2, a, b);
-}
-
-static VALUE
-redtree_dispatch3(struct parser_params *parser, ID mid, VALUE a, VALUE b, VALUE c)
-{
-    validate(a);
-    validate(b);
-    validate(c);
-    return rb_funcall(parser->value, mid, 3, a, b, c);
-}
-
-static VALUE
-redtree_dispatch4(struct parser_params *parser, ID mid, VALUE a, VALUE b, VALUE c, VALUE d)
-{
-    validate(a);
-    validate(b);
-    validate(c);
-    validate(d);
-    return rb_funcall(parser->value, mid, 4, a, b, c, d);
-}
-
-static VALUE
-redtree_dispatch5(struct parser_params *parser, ID mid, VALUE a, VALUE b, VALUE c, VALUE d, VALUE e)
-{
-    validate(a);
-    validate(b);
-    validate(c);
-    validate(d);
-    validate(e);
-    return rb_funcall(parser->value, mid, 5, a, b, c, d, e);
+  redtree_stack_push(parser, -(parser->parse_tree->sequence_count - 1));
 }
 
 static const struct kw_assoc {
@@ -6517,15 +6453,24 @@ Init_redtree(void)
     Redtree = rb_define_class("Redtree", rb_cObject);
     rb_cTree = rb_define_class_under(Redtree, "Tree", rb_cObject);
     rb_undef_method(CLASS_OF(rb_cTree), "new");
+    rb_define_method(rb_cTree, "tokens", redtree_tokens, 0);
     rb_define_method(rb_cTree, "sequence", redtree_sequence, 0);
     rb_define_method(rb_cTree, "root", redtree_root, 0);
 
     rb_cNode = rb_define_class_under(rb_cTree, "Node", rb_cObject);
-    rb_undef_method(CLASS_OF(rb_cTree), "new");
+    rb_undef_method(CLASS_OF(rb_cNode), "new");
     rb_define_method(rb_cNode, "name", redtree_node_name, 0);
     rb_define_method(rb_cNode, "index", redtree_node_index, 0);
     rb_define_method(rb_cNode, "size", redtree_node_size, 0);
+    rb_define_method(rb_cNode, "child", redtree_node_child, 1);
+    rb_alias(rb_cNode, rb_intern("[]"), rb_intern("child"));
     rb_define_method(rb_cNode, "child_node", redtree_node_child_node, 1);
+    rb_define_method(rb_cNode, "child_token", redtree_node_child_token, 1);
+
+    rb_cToken = rb_define_class_under(rb_cTree, "Token", rb_cObject);
+    rb_undef_method(CLASS_OF(rb_cToken), "new");
+    rb_define_method(rb_cToken, "name", redtree_token_name, 0);
+    rb_define_method(rb_cToken, "index", redtree_token_index, 0);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);
