@@ -41,6 +41,9 @@ struct redtree_node_ref {
   uint32_t index;
 };
 
+VALUE redtree_node_index(VALUE self);
 VALUE redtree_node_name(VALUE self);
+VALUE redtree_node_size(VALUE self);
+VALUE redtree_node_child_node(VALUE self, VALUE idx);
 
 #endif

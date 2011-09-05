@@ -134,6 +134,17 @@ static const rb_data_type_t node_data_type =  {"redtree_node",
     0, node_free, node_memsize,
 };
 
+static uint8_t redtree_node_width(struct redtree_node_ref* node) {
+  // TODO(adgar): Assembly version which is O(1)
+  int32_t pattern = node->tree->sequence[node->index-1];
+  uint8_t width = 0;
+  while (pattern != 0) {
+    ++width;
+    pattern >>= 2;
+  }
+  return width;
+}
+
 static VALUE redtree_node_new(struct redtree* tree, uint32_t index) {
   struct redtree_node_ref* node = ALLOC_N(struct redtree_node_ref, 1);
   node->tree = tree;
@@ -141,10 +152,29 @@ static VALUE redtree_node_new(struct redtree* tree, uint32_t index) {
   return TypedData_Wrap_Struct(rb_cNode, &node_data_type, node);
 }
 
+VALUE redtree_node_index(VALUE self) {
+  struct redtree_node_ref* node;
+  TypedData_Get_Struct(self, struct redtree_node_ref, &node_data_type, node);
+  return INT2FIX(node->index);
+}
+
 VALUE redtree_node_name(VALUE self) {
   struct redtree_node_ref* node;
   TypedData_Get_Struct(self, struct redtree_node_ref, &node_data_type, node);
   rb_ary_entry(rb_aNames, -node->tree->sequence[node->index]);
+}
+
+VALUE redtree_node_size(VALUE self) {
+  struct redtree_node_ref* node;
+  TypedData_Get_Struct(self, struct redtree_node_ref, &node_data_type, node);
+  return INT2FIX(redtree_node_width(node));
+}
+
+VALUE redtree_node_child_node(VALUE self, VALUE idx) {
+  uint32_t offset = FIX2INT(idx);
+  struct redtree_node_ref* node;
+  TypedData_Get_Struct(self, struct redtree_node_ref, &node_data_type, node);
+  return redtree_node_new(node->tree, node->tree->sequence[node->index - (offset + 1)]);
 }
 
 #undef INITIAL_TOKEN_COUNT

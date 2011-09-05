@@ -3259,48 +3259,48 @@ parser_nextc(struct parser_params *parser)
     int c;
 
     if (lex_p == lex_pend) {
-  VALUE v = lex_nextline;
-  lex_nextline = 0;
-  if (!v) {
-          if (parser->eofp)
-    return -1;
+      VALUE v = lex_nextline;
+      lex_nextline = 0;
+      if (!v) {
+        if (parser->eofp)
+          return -1;
 
-          if (!lex_input || NIL_P(v = lex_getline(parser))) {
-    parser->eofp = Qtrue;
-    lex_goto_eol(parser);
-    return -1;
+        if (!lex_input || NIL_P(v = lex_getline(parser))) {
+          parser->eofp = Qtrue;
+          lex_goto_eol(parser);
+          return -1;
+        }
+      }
+      {
+        if (parser->tokp < lex_pend) {
+          if (NIL_P(parser->delayed)) {
+            parser->delayed = rb_str_buf_new(1024);
+            rb_str_buf_cat(parser->delayed,
+               parser->tokp, lex_pend - parser->tokp);
+            parser->delayed_line = ruby_sourceline;
+            parser->delayed_col = (int)(parser->tokp - lex_pbeg);
           }
-  }
-  {
-          if (parser->tokp < lex_pend) {
-    if (NIL_P(parser->delayed)) {
-        parser->delayed = rb_str_buf_new(1024);
-        rb_str_buf_cat(parser->delayed,
-           parser->tokp, lex_pend - parser->tokp);
-        parser->delayed_line = ruby_sourceline;
-        parser->delayed_col = (int)(parser->tokp - lex_pbeg);
-    }
-    else {
-        rb_str_buf_cat(parser->delayed,
-           parser->tokp, lex_pend - parser->tokp);
-    }
+          else {
+            rb_str_buf_cat(parser->delayed,
+              parser->tokp, lex_pend - parser->tokp);
           }
-          if (heredoc_end > 0) {
-    ruby_sourceline = heredoc_end;
-    heredoc_end = 0;
-          }
-          ruby_sourceline++;
-          parser->line_count++;
-          lex_pbeg = lex_p = RSTRING_PTR(v);
-          lex_pend = lex_p + RSTRING_LEN(v);
-          redtree_flush(parser);
-          lex_lastline = v;
-  }
+        }
+        if (heredoc_end > 0) {
+          ruby_sourceline = heredoc_end;
+          heredoc_end = 0;
+        }
+        ruby_sourceline++;
+        parser->line_count++;
+        lex_pbeg = lex_p = RSTRING_PTR(v);
+        lex_pend = lex_p + RSTRING_LEN(v);
+        redtree_flush(parser);
+        lex_lastline = v;
+      }
     }
     c = (unsigned char)*lex_p++;
     if (c == '\r' && peek('\n')) {
-  lex_p++;
-  c = '\n';
+      lex_p++;
+      c = '\n';
     }
 
     return c;
@@ -6081,13 +6081,14 @@ static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, i
   int32_t* popped = redtree_stack_pop_n(parser, rhs_size);
   // for each on RHS
   while (rhs_size--) {
+    pattern <<= 2;
     int32_t val = *(popped + rhs_size);
     redtree_sequence_push(parser->parse_tree, *popped + rhs_size);
-    pattern |= (0x3 & (val < 0));
+    pattern |= 0x2 | (val < 0);
   }
   redtree_sequence_push(parser->parse_tree, pattern);
   redtree_sequence_push(parser->parse_tree, -redtree_rule_num);
-  redtree_stack_push(parser, -redtree_rule_num);
+  redtree_stack_push(parser, parser->parse_tree->sequence_count - 1);
 }
 
 static VALUE
@@ -6522,6 +6523,9 @@ Init_redtree(void)
     rb_cNode = rb_define_class_under(rb_cTree, "Node", rb_cObject);
     rb_undef_method(CLASS_OF(rb_cTree), "new");
     rb_define_method(rb_cNode, "name", redtree_node_name, 0);
+    rb_define_method(rb_cNode, "index", redtree_node_index, 0);
+    rb_define_method(rb_cNode, "size", redtree_node_size, 0);
+    rb_define_method(rb_cNode, "child_node", redtree_node_child_node, 1);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);
