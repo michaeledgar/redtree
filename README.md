@@ -5,7 +5,7 @@ Redtree: A Superior Ruby Parser
 **Git**:          [https://github.com/michaeledgar/redtree](http://github.com/michaeledgar/redtree)   
 **Author**:       Michael Edgar    
 **Copyright**:    2011   
-**License**:      MIT
+**License**:      MIT    
 **Latest Version**: none   
 **Release Date**: None, yet.
 
@@ -22,8 +22,9 @@ Feature List
 Details are always forthcoming, but:
 
 **1. Full Token Information**: Each internal node of the parse tree knows exactly which tokens (or other internal nodes) composed the node's reduction during parsing. Every token is available, including its line/column start and end points.  
-**2. Comment Nodes**: Attaching comments to nodes is a task required of documentation tools, linters, static analyzers, and so on. Yet no Ruby parser adequately includes comments when necessary.
-**3. Compact Representation**: Including this much information is possible with a compact, simple representation. Redtree incorporates this design to minimize its space use.
+**2. Comment Nodes**: Attaching comments to nodes is a task required of documentation tools, linters, static analyzers, and so on. Yet no Ruby parser adequately includes comments when necessary.  
+**3. Compact Representation**: Including this much information is possible with a compact, simple representation. Redtree incorporates this design to minimize its space use.    
+**4. Fast Parsing**: Parsing should be fast. Before converting to a more natural AST, Redtree runs at least 40% faster than Ripper. Of course, Ripper does more work converting to a simpler AST, but Redtree is stashing away a *lot* more information.
 
 Installing
 ----------
