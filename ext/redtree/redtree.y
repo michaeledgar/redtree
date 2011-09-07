@@ -28,8 +28,10 @@
 #include <errno.h>
 #include <ctype.h>
 
-VALUE rb_cTree, rb_cNode, rb_cToken;
+VALUE rb_cTree, rb_cNode, rb_cToken, rb_cWalkerOps;
+VALUE rb_mWalker, rb_mWalkerClassMethods;
 VALUE rb_aNames, rb_aTokenNames;
+ID rb_iWalkerOps;
 
 #define numberof(array) (int)(sizeof(array) / sizeof((array)[0]))
 
@@ -99,6 +101,8 @@ int32_t* redtree_stack_pop_n_volatile(struct parser_params* parser,
 int32_t* redtree_stack_pop_n(struct parser_params* parser, unsigned int n);
 void redtree_stack_push(struct parser_params* parser, int32_t val);
 
+#include "eventids1.c"
+#include "eventids2.c"
 #include "tree.h"
 #include "tree.c"
 
@@ -416,8 +420,6 @@ void redtree_stack_push(struct parser_params* parser, int32_t val) {
 
 #define Redtree_VERSION "0.1.0"
 
-#include "eventids1.c"
-#include "eventids2.c"
 static ID redtree_id_gets;
 
 static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, int rhs_size);
@@ -6334,7 +6336,7 @@ redtree_initialize(int argc, VALUE *argv, VALUE self)
         StringValue(fname);
     }
     parser_initialize(parser);
-    redtree_init_struct(parser->parse_tree, src);
+    redtree_init_struct(parser->parse_tree);
 
     parser->parser_ruby_sourcefile_string = fname;
     parser->parser_ruby_sourcefile = RSTRING_PTR(fname);
@@ -6492,7 +6494,7 @@ void
 Init_redtree(void)
 {
     VALUE Redtree;
-
+    rb_iWalkerOps = rb_intern_const("@walker_ops");
     Redtree = rb_define_class("Redtree", rb_cObject);
     rb_cTree = rb_define_class_under(Redtree, "Tree", rb_cObject);
     rb_undef_method(CLASS_OF(rb_cTree), "new");
@@ -6517,6 +6519,17 @@ Init_redtree(void)
     rb_define_method(rb_cToken, "line_number", redtree_token_line_number, 0);
     rb_define_method(rb_cToken, "column", redtree_token_column, 0);
     rb_define_method(rb_cToken, "size", redtree_token_size, 0);
+
+    rb_mWalker = rb_define_module_under(rb_cTree, "Walker");
+    rb_mWalkerClassMethods = rb_define_module_under(rb_mWalker, "ClassMethods");
+    
+    rb_cWalkerOps = rb_define_class_under(rb_mWalker, "Walkerops", rb_cObject);
+    rb_undef_method(CLASS_OF(rb_cWalkerOps), "new");
+
+    rb_define_method(CLASS_OF(rb_mWalker), "included", redtree_walker_included, 1);
+    rb_define_method(rb_mWalker, "walk", redtree_walker_walk, 1);
+    rb_define_method(rb_mWalker, "walk_node", redtree_walker_visit_node, 1);
+    rb_define_method(rb_mWalkerClassMethods, "on", redtree_walker_s_on, -1);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);

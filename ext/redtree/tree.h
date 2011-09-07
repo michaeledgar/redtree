@@ -5,7 +5,6 @@ typedef uint16_t redtree_token;
 typedef int32_t redtree_sequence_entry;
 
 struct redtree {
-  VALUE source;
   redtree_token *tokens;
   struct token_location {
     uint32_t start_line;
@@ -20,7 +19,7 @@ struct redtree {
 };
 
 struct redtree* redtree_allocate();
-void redtree_init_struct(struct redtree* tree, VALUE source);
+void redtree_init_struct(struct redtree* tree);
 uint32_t redtree_lex_token(struct redtree* tree,
                        redtree_token token_type,
                        uint32_t token_start_line,
@@ -52,5 +51,8 @@ VALUE redtree_token_index(VALUE self);
 VALUE redtree_token_line_number(VALUE self);
 VALUE redtree_token_column(VALUE self);
 VALUE redtree_token_size(VALUE self);
+
+VALUE redtree_walker_walk(VALUE self, VALUE node);
+VALUE redtree_walker_visit_node(VALUE self, VALUE node);
 
 #endif
