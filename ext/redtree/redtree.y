@@ -105,6 +105,7 @@ void redtree_stack_push(struct parser_params* parser, int32_t val);
 #include "eventids2.c"
 #include "tree.h"
 #include "tree.c"
+#include "to_ripper.c"
 
 struct vtable {
     ID *tbl;
@@ -3241,6 +3242,7 @@ static VALUE
 lex_getline(struct parser_params *parser)
 {
     VALUE line = (*parser->parser_lex_gets)(parser, parser->parser_lex_input);
+    redtree_add_line(parser->parse_tree, line);
     if (NIL_P(line)) return line;
     must_be_ascii_compatible(line);
     return line;
@@ -6530,6 +6532,11 @@ Init_redtree(void)
     rb_define_method(rb_mWalker, "walk", redtree_walker_walk, 1);
     rb_define_method(rb_mWalker, "walk_node", redtree_walker_visit_node, 1);
     rb_define_method(rb_mWalkerClassMethods, "on", redtree_walker_s_on, -1);
+
+    rb_cRedtreeRipper = rb_define_class_under(Redtree, "Ripper", rb_cObject);
+    rb_define_alloc_func(rb_cRedtreeRipper, redtree_ripper_allocate);
+    rb_define_method(rb_cRedtreeRipper, "initialize", redtree_ripper_initialize, 1);
+    rb_define_method(rb_cRedtreeRipper, "parse", redtree_ripper_parse, 0);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);

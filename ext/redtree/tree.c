@@ -2,6 +2,7 @@
 #include "ruby/ruby.h"
 #include "tree.h"
 
+#define INITIAL_LINE_COUNT 16
 #define INITIAL_TOKEN_COUNT 256
 #define INITIAL_SEQUENCE_COUNT 256
 
@@ -23,6 +24,18 @@ void redtree_init_struct(struct redtree* tree) {
   tree->sequence = ALLOC_N(redtree_sequence_entry, INITIAL_SEQUENCE_COUNT);
   tree->sequence_size = INITIAL_SEQUENCE_COUNT;
   tree->sequence_count = 0;
+  tree->lines = ALLOC_N(VALUE, INITIAL_LINE_COUNT);
+  tree->line_size = INITIAL_LINE_COUNT;
+  tree->line_count = 0;
+}
+
+void redtree_add_line(struct redtree* tree, VALUE str) {
+  tree->lines[tree->line_count] = str;
+  ++tree->line_count;
+  if (tree->line_count == tree->line_size) {
+    tree->line_size *= 2;
+    REALLOC_N(tree->lines, VALUE, tree->line_size);
+  }
 }
 
 uint32_t redtree_lex_token(struct redtree* tree,
@@ -61,6 +74,16 @@ void redtree_sequence_push(struct redtree* tree, int32_t entry) {
 }
 
 static void
+tree_mark(void *ptr)
+{
+  struct redtree *p = (struct redtree*)ptr;
+  int idx, max = p->line_count;
+  for (idx=0; idx < max; ++idx) {
+    rb_gc_mark(p->lines[idx]);
+  }
+}
+
+static void
 tree_free(void *ptr)
 {
     struct redtree *p = (struct redtree*)ptr;
@@ -68,6 +91,7 @@ tree_free(void *ptr)
     xfree(p->tokens);
     xfree(p->token_locations);
     xfree(p->sequence);
+    xfree(p->lines);
     xfree(p);
 }
 
@@ -85,7 +109,7 @@ tree_memsize(const void *ptr)
 }
 
 static const rb_data_type_t tree_data_type =  {"redtree",
-    0, tree_free, tree_memsize,
+    tree_mark, tree_free, tree_memsize,
 };
 
 
@@ -126,6 +150,13 @@ VALUE redtree_root(VALUE self) {
 /****************** NODE METHODS ******************/
 
 static void
+node_mark(void *ptr)
+{
+  struct redtree_node_ref* node = (struct redtree_node_ref*)ptr;
+  tree_mark(node->tree);
+}
+
+static void
 node_free(void *ptr)
 {
   xfree(ptr);
@@ -138,7 +169,7 @@ node_memsize(void *ptr)
 }
 
 static const rb_data_type_t node_data_type =  {"redtree_node",
-    0, node_free, node_memsize,
+    node_mark, node_free, node_memsize,
 };
 
 static struct redtree_node_ref* redtree_unpack_node(VALUE self) {
@@ -217,7 +248,7 @@ VALUE redtree_node_child_token(VALUE self, VALUE idx) {
 /********************* TOKEN METHODS *********************/
 
 static const rb_data_type_t token_data_type =  {"redtree_token",
-    0, node_free, node_memsize,
+    node_mark, node_free, node_memsize,
 };
 
 static VALUE redtree_token_new(struct redtree* tree, uint32_t index) {

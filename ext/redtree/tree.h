@@ -11,15 +11,19 @@ struct redtree {
     uint16_t start_col;
     uint16_t size;
   } *token_locations;
-  redtree_sequence_entry *sequence;
   uint32_t token_count;
-  uint32_t sequence_count;
   uint32_t token_size;
+  redtree_sequence_entry *sequence;
+  uint32_t sequence_count;
   uint32_t sequence_size;
+  VALUE *lines;
+  uint32_t line_count;
+  uint32_t line_size;
 };
 
 struct redtree* redtree_allocate();
 void redtree_init_struct(struct redtree* tree);
+void redtree_add_line(struct redtree* tree, VALUE str);
 uint32_t redtree_lex_token(struct redtree* tree,
                        redtree_token token_type,
                        uint32_t token_start_line,
