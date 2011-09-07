@@ -22,4 +22,3 @@ task :build do
 end
 
 Rake::TestTask.new
-
