@@ -1,4 +1,9 @@
 class Redtree
-  class Node
+  class Tree
+    class Node
+  	  def inspect
+  	    "<Redtree::Tree::Node #{name}>"
+  	  end
+  	end
   end
 end

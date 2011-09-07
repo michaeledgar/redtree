@@ -410,7 +410,7 @@ void redtree_stack_push(struct parser_params* parser, int32_t val) {
     }
     if (stack->pos == stack->capa) {
       stack->capa *= 2;
-      stack->stack = REALLOC_N(stack->stack, int32_t, stack->capa);
+      REALLOC_N(stack->stack, int32_t, stack->capa);
     }
 }
 
@@ -1198,7 +1198,7 @@ undef_list  : fitem
         }
     | undef_list ',' {lex_state = EXPR_FNAME;} fitem
         {
-          reduce_rule(undef_list__COMMA__fitem, 2);
+          reduce_rule(undef_list__undef_list__COMMA__fitem, 3);
         }
     ;
 
@@ -1233,9 +1233,9 @@ op    : '|'     { reduce_rule(op__OR, 1); }
       | '`'     { reduce_rule(op__BACKTICK, 1); }
     ;
 
-reswords  : keyword__LINE__ { reduce_rule(reswords__keyword__LINE__, 2); }
-          | keyword__FILE__ { reduce_rule(reswords__keyword__FILE__, 2); }
-          | keyword__ENCODING__ { reduce_rule(reswords__keyword__ENCODING__, 2); }
+reswords  : keyword__LINE__ { reduce_rule(reswords__keyword__LINE, 1); }
+          | keyword__FILE__ { reduce_rule(reswords__keyword__FILE, 1); }
+          | keyword__ENCODING__ { reduce_rule(reswords__keyword__ENCODING, 1); }
           | keyword_BEGIN { reduce_rule(reswords__keyword_BEGIN, 1); }
           | keyword_END { reduce_rule(reswords__keyword_END, 1); }
           | keyword_alias { reduce_rule(reswords__keyword_alias, 1); }
@@ -1451,7 +1451,7 @@ arg   : lhs '=' arg
         }
     | arg '?' arg opt_nl ':' arg
         {
-          reduce_rule(arg__QMARK__arg__opt_nl__COLON__arg, 5);
+          reduce_rule(arg__arg__QMARK__arg__opt_nl__COLON__arg, 6);
         }
     | primary
         {
@@ -3128,6 +3128,51 @@ redtree_yylval_id(ID x)
 
 #define yylval_rval (*(RB_TYPE_P(yylval.val, T_NODE) ? &yylval.node->nd_rval : &yylval.val))
 
+static int
+redtree_has_scan_event(struct parser_params *parser)
+{
+
+    if (lex_p < parser->tokp) rb_raise(rb_eRuntimeError, "lex_p < tokp");
+    return lex_p > parser->tokp;
+}
+
+static uint32_t
+redtree_scan_event_val(struct parser_params *parser, int t)
+{
+    VALUE str = STR_NEW(parser->tokp, lex_p - parser->tokp);
+    uint32_t rval = redtree_lex_token(parser->parse_tree, t, parser->parser_ruby_sourceline, parser->tokp - lex_pbeg, lex_p - parser->tokp);
+    redtree_flush(parser);
+    return rval;
+}
+
+static void
+redtree_dispatch_scan_event(struct parser_params *parser, int t)
+{
+    if (!redtree_has_scan_event(parser)) return;
+    parser->tok_to_shift = redtree_scan_event_val(parser, t);
+}
+
+static void
+redtree_dispatch_ignored_scan_event(struct parser_params *parser, int t)
+{
+    if (!redtree_has_scan_event(parser)) return;
+    (void)redtree_scan_event_val(parser, t);
+}
+
+static void
+redtree_dispatch_delayed_token(struct parser_params *parser, int t)
+{
+    int saved_line = ruby_sourceline;
+    const char *saved_tokp = parser->tokp;
+
+    ruby_sourceline = parser->delayed_line;
+    parser->tokp = lex_pbeg + parser->delayed_col;
+    parser->tok_to_shift = redtree_lex_token(parser->parse_tree, t, parser->parser_ruby_sourceline, parser->tokp - lex_pbeg, lex_p - parser->tokp);
+    parser->delayed = Qnil;
+    ruby_sourceline = saved_line;
+    parser->tokp = saved_tokp;
+}
+
 #include "ruby/regex.h"
 #include "ruby/util.h"
 
@@ -3178,13 +3223,13 @@ lex_get_str(struct parser_params *parser, VALUE s)
 
     beg = RSTRING_PTR(s);
     if (lex_gets_ptr) {
-  if (RSTRING_LEN(s) == lex_gets_ptr) return Qnil;
-  beg += lex_gets_ptr;
+      if (RSTRING_LEN(s) == lex_gets_ptr) return Qnil;
+      beg += lex_gets_ptr;
     }
     pend = RSTRING_PTR(s) + RSTRING_LEN(s);
     end = beg;
     while (end < pend) {
-  if (*end++ == '\n') break;
+      if (*end++ == '\n') break;
     }
     lex_gets_ptr = end - RSTRING_PTR(s);
     return rb_enc_str_new(beg, end - beg, enc);
@@ -3245,7 +3290,7 @@ static inline int
 parser_nextc(struct parser_params *parser)
 {
     int c;
-
+    /* If at end of line */
     if (lex_p == lex_pend) {
       VALUE v = lex_nextline;
       lex_nextline = 0;
@@ -3862,7 +3907,7 @@ parser_parse_string(struct parser_params *parser, NODE *quote)
   if (len > 0) {
           rb_enc_str_buf_cat(parser->delayed, parser->tokp, len, enc);
   }
-  // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+  redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
   parser->tokp = lex_p;
     }
 
@@ -3918,7 +3963,7 @@ parser_heredoc_identifier(struct parser_params *parser)
     }
 
     tokfix();
-    // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tHEREDOC_BEG);
+    redtree_dispatch_scan_event(parser, tHEREDOC_BEG);
     len = lex_p - lex_pbeg;
     lex_goto_eol(parser);
     lex_strterm = rb_node_newnode(NODE_HEREDOC,
@@ -3966,10 +4011,10 @@ static void
 redtree_dispatch_heredoc_end(struct parser_params *parser)
 {
     if (!NIL_P(parser->delayed)) {
-      // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+      redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
     }
     lex_goto_eol(parser);
-    // TODO(adgar): Into Lex Stream: redtree_dispatch_ignored_scan_event(parser, tHEREDOC_END);
+    redtree_dispatch_ignored_scan_event(parser, tHEREDOC_END);
 }
 
 #define dispatch_heredoc_end() redtree_dispatch_heredoc_end(parser)
@@ -3991,7 +4036,7 @@ parser_here_document(struct parser_params *parser, NODE *here)
           error:
   compile_error(PARSER_ARG "can't find string \"%s\" anywhere before EOF", eos);
   if (NIL_P(parser->delayed)) {
-          // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tSTRING_CONTENT);
+          redtree_dispatch_scan_event(parser, tSTRING_CONTENT);
   }
   else {
           if (str ||
@@ -3999,7 +4044,7 @@ parser_here_document(struct parser_params *parser, NODE *here)
      (str = STR_NEW3(parser->tokp, len, enc, func), 1))) {
     rb_str_append(parser->delayed, str);
           }
-          // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
+          redtree_dispatch_delayed_token(parser, tSTRING_CONTENT);
   }
   lex_goto_eol(parser);
           restore:
@@ -4310,26 +4355,26 @@ set_file_encoding(struct parser_params *parser, const char *str, const char *sen
 static void
 parser_prepare(struct parser_params *parser)
 {
-    int c = nextc();
-    switch (c) {
-          case '#':
-  if (peek('!')) parser->has_shebang = 1;
-  break;
-          case 0xef:    /* UTF-8 BOM marker */
-  if (lex_pend - lex_p >= 2 &&
-          (unsigned char)lex_p[0] == 0xbb &&
-          (unsigned char)lex_p[1] == 0xbf) {
-          parser->enc = rb_utf8_encoding();
-          lex_p += 2;
-          lex_pbeg = lex_p;
-          return;
+  int c = nextc();
+  switch (c) {
+    case '#':
+      if (peek('!')) parser->has_shebang = 1;
+        break;
+    case 0xef:    /* UTF-8 BOM marker */
+      if (lex_pend - lex_p >= 2 &&
+         (unsigned char)lex_p[0] == 0xbb &&
+         (unsigned char)lex_p[1] == 0xbf) {
+        parser->enc = rb_utf8_encoding();
+        lex_p += 2;
+        lex_pbeg = lex_p;
+        return;
+      }
+      break;
+    case EOF:
+      return;
   }
-  break;
-          case EOF:
-  return;
-    }
-    pushback(c);
-    parser->enc = rb_enc_get(lex_lastline);
+  pushback(c);
+  parser->enc = rb_enc_get(lex_lastline);
 }
 
 #define IS_ARG() (lex_state == EXPR_ARG || lex_state == EXPR_CMDARG)
@@ -4360,109 +4405,108 @@ parser_yylex(struct parser_params *parser)
     int fallthru = FALSE;
 
     if (lex_strterm) {
-  int token;
-  if (nd_type(lex_strterm) == NODE_HEREDOC) {
-          token = here_document(lex_strterm);
-          if (token == tSTRING_END) {
-    lex_strterm = 0;
-    lex_state = EXPR_END;
-          }
-  }
-  else {
-          token = parse_string(lex_strterm);
-          if (token == tSTRING_END || token == tREGEXP_END) {
-    rb_gc_force_recycle((VALUE)lex_strterm);
-    lex_strterm = 0;
-    lex_state = EXPR_END;
-          }
-  }
-  return token;
+      int token;
+      if (nd_type(lex_strterm) == NODE_HEREDOC) {
+        token = here_document(lex_strterm);
+        if (token == tSTRING_END) {
+          lex_strterm = 0;
+          lex_state = EXPR_END;
+        }
+      }
+      else {
+        token = parse_string(lex_strterm);
+        if (token == tSTRING_END || token == tREGEXP_END) {
+          rb_gc_force_recycle((VALUE)lex_strterm);
+          lex_strterm = 0;
+          lex_state = EXPR_END;
+        }
+      }
+      return token;
     }
     cmd_state = command_start;
     command_start = FALSE;
   retry:
     last_state = lex_state;
     switch (c = nextc()) {
-          case '\0':    /* NUL */
-          case '\004':    /* ^D */
-          case '\032':    /* ^Z */
-          case -1:      /* end of script. */
-  return 0;
+      case '\0':    /* NUL */
+      case '\004':    /* ^D */
+      case '\032':    /* ^Z */
+      case -1:      /* end of script. */
+        return 0;
 
   /* white spaces */
-          case ' ': case '\t': case '\f': case '\r':
-          case '\13': /* '\v' */
-  space_seen = 1;
-  while ((c = nextc())) {
+      case ' ': case '\t': case '\f': case '\r':
+      case '\13': /* '\v' */
+        space_seen = 1;
+        while ((c = nextc())) {
           switch (c) {
-        case ' ': case '\t': case '\f': case '\r':
-        case '\13': /* '\v' */
-    break;
-        default:
-    goto outofloop;
-          }
-  }
-          outofloop:
-  pushback(c);
-  // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tSP);
-  goto retry;
-
-          case '#':   /* it's a comment */
-  /* no magic_comment in shebang line */
-  if (!parser_magic_comment(parser, lex_p, lex_pend - lex_p)) {
-          if (comment_at_top(parser)) {
-    set_file_encoding(parser, lex_p, lex_pend);
-          }
-  }
-  lex_p = lex_pend;
-        // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tCOMMENT);
-        fallthru = TRUE;
-  /* fall through */
-          case '\n':
-  switch (lex_state) {
-    case EXPR_BEG:
-    case EXPR_FNAME:
-    case EXPR_DOT:
-    case EXPR_CLASS:
-    case EXPR_VALUE:
-            if (!fallthru) {
-                // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tIGNORED_NL);
-            }
-            fallthru = FALSE;
-          goto retry;
-    default:
-          break;
-  }
-  while ((c = nextc())) {
-          switch (c) {
-        case ' ': case '\t': case '\f': case '\r':
-        case '\13': /* '\v' */
-    space_seen = 1;
-    break;
-        case '.': {
-          if ((c = nextc()) != '.') {
-          pushback(c);
-          pushback('.');
-          goto retry;
+            case ' ': case '\t': case '\f': case '\r':
+            case '\13': /* '\v' */
+              break;
+            default:
+              goto outofloop;
           }
         }
-        default:
-    --ruby_sourceline;
-    lex_nextline = lex_lastline;
-        case -1:    /* EOF no decrement*/
-    lex_goto_eol(parser);
-    if (c != -1) {
-        parser->tokp = lex_p;
-    }
-    goto normal_newline;
+      outofloop:
+        pushback(c);
+        redtree_dispatch_scan_event(parser, tSP);
+        goto retry;
+      case '#':   /* it's a comment */
+        /* no magic_comment in shebang line */
+        if (!parser_magic_comment(parser, lex_p, lex_pend - lex_p)) {
+          if (comment_at_top(parser)) {
+            set_file_encoding(parser, lex_p, lex_pend);
           }
-  }
-          normal_newline:
-  command_start = TRUE;
-  lex_state = EXPR_BEG;
-  return '\n';
+        }
+        lex_p = lex_pend;
+        redtree_dispatch_scan_event(parser, tCOMMENT);
+        fallthru = TRUE;
+        /* fall through */
+      case '\n':
+        switch (lex_state) {
+          case EXPR_BEG:
+          case EXPR_FNAME:
+          case EXPR_DOT:
+          case EXPR_CLASS:
+          case EXPR_VALUE:
+            if (!fallthru) {
+                redtree_dispatch_scan_event(parser, tIGNORED_NL);
+            }
+            fallthru = FALSE;
+            goto retry;
+          default:
+            break;
+        }
+        while ((c = nextc())) {
+          switch (c) {
+            case ' ': case '\t': case '\f': case '\r':
+            case '\13': /* '\v' */
+              space_seen = 1;
+              break;
+            case '.': {
+              if ((c = nextc()) != '.') {
+                pushback(c);
+                pushback('.');
+                goto retry;
+              }
+            }
+            default:
+              --ruby_sourceline;
+              lex_nextline = lex_lastline;
+            case -1:    /* EOF no decrement */
+              lex_goto_eol(parser);
+              if (c != -1) {
+                  parser->tokp = lex_p;
+              }
+              goto normal_newline;
+          }
+        }
+      normal_newline:
+        command_start = TRUE;
+        lex_state = EXPR_BEG;
+        return '\n';
 
-          case '*':
+      case '*':
   if ((c = nextc()) == '*') {
           if ((c = nextc()) == '=') {
                 set_yylval_id(tPOW);
@@ -4526,11 +4570,11 @@ parser_yylex(struct parser_params *parser)
                 int first_p = TRUE;
 
                 lex_goto_eol(parser);
-                // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tEMBDOC_BEG);
+                redtree_dispatch_scan_event(parser, tEMBDOC_BEG);
     for (;;) {
         lex_goto_eol(parser);
                     if (!first_p) {
-                        // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tEMBDOC);
+                        redtree_dispatch_scan_event(parser, tEMBDOC);
                     }
                     first_p = FALSE;
         c = nextc();
@@ -4545,7 +4589,7 @@ parser_yylex(struct parser_params *parser)
         }
     }
     lex_goto_eol(parser);
-                // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tEMBDOC_END);
+                redtree_dispatch_scan_event(parser, tEMBDOC_END);
     goto retry;
           }
   }
@@ -5254,7 +5298,7 @@ parser_yylex(struct parser_params *parser)
   c = nextc();
   if (c == '\n') {
           space_seen = 1;
-          // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, tSP);
+          redtree_dispatch_scan_event(parser, tSP);
           goto retry; /* skip \\n */
   }
   pushback(c);
@@ -5462,7 +5506,7 @@ parser_yylex(struct parser_params *parser)
           ruby__end__seen = 1;
           parser->eofp = Qtrue;
             lex_goto_eol(parser);
-            // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, k__END__);
+            redtree_dispatch_scan_event(parser, k__END__);
             return 0;
   }
   newtok();
@@ -5628,13 +5672,14 @@ yylex(void *p)
 #endif
     t = parser_yylex(parser);
 
-    parser->tok_to_shift = redtree_lex_token(parser->parse_tree, t, 0, 0, 0, 0);
+    redtree_dispatch_scan_event(parser, t);
+    //parser->tok_to_shift = redtree_lex_token(parser->parse_tree, t, 0, 0, 0, 0);
     if (!NIL_P(parser->delayed)) {
-  // TODO(adgar): Into Lex Stream: redtree_dispatch_delayed_token(parser, t);
+  redtree_dispatch_delayed_token(parser, t);
   return t;
     }
     if (t != 0) {
-  // TODO(adgar): Into Lex Stream: redtree_dispatch_scan_event(parser, t);
+  redtree_dispatch_scan_event(parser, t);
     }
     return t;
 }
@@ -6062,8 +6107,6 @@ static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, i
   // prepare pattern value
   int32_t pattern = 0;
   // look up size of rhs to pop from parser->redtree_stack
-  // unsigned int rhs_size = yyr2[yyn];
-  // pop from stack TODO(adgar): make volatile for speed
   int32_t* popped = redtree_stack_pop_n_volatile(parser, rhs_size);
   // for each on RHS
   while (rhs_size--) {
@@ -6471,6 +6514,9 @@ Init_redtree(void)
     rb_undef_method(CLASS_OF(rb_cToken), "new");
     rb_define_method(rb_cToken, "name", redtree_token_name, 0);
     rb_define_method(rb_cToken, "index", redtree_token_index, 0);
+    rb_define_method(rb_cToken, "line_number", redtree_token_line_number, 0);
+    rb_define_method(rb_cToken, "column", redtree_token_column, 0);
+    rb_define_method(rb_cToken, "size", redtree_token_size, 0);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);
