@@ -12,7 +12,7 @@ def main
     end
   end
   $objs = %w(redtree.o)
-  $cleanfiles.concat %w(redtree.c redtree.output y.output eventids1.c)
+  $cleanfiles.concat %w(redtree.c redtree.output y.output eventids1.c eventids2table.c ripperids.c)
   $defs << '-DREDTREE'
   $defs << '-DREDTREE_DEBUG' if $debug
   $VPATH = []

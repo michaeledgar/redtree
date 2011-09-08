@@ -103,6 +103,7 @@ void redtree_stack_push(struct parser_params* parser, int32_t val);
 
 #include "eventids1.c"
 #include "eventids2.c"
+#include "ripperids.c"
 #include "tree.h"
 #include "tree.c"
 #include "to_ripper.c"
@@ -6553,6 +6554,7 @@ Init_redtree(void)
     redtree_id_gets = rb_intern("gets");
     redtree_init_eventids1(Redtree);
     redtree_init_eventids2(Redtree);
+    redtree_init_ripperids(rb_cRedtreeRipper);
     /* ensure existing in symbol table */
     (void)rb_intern("||");
     (void)rb_intern("&&");

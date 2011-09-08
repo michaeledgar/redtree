@@ -1,13 +1,14 @@
 GEN  = $(srcdir)/tools/generate.rb
 SRC1 = redtree.y
 SRC2 = eventids2.c
+RIPPERSRC = to_ripper.c
 BISON = bison
 
 .SUFFIXES: .y
 
-src: redtree.c eventids1.c eventids2table.c
+src: redtree.c eventids1.c eventids2table.c ripperids.c
 
-redtree.o: redtree.c lex.c eventids1.c eventids2table.c
+redtree.o: redtree.c lex.c eventids1.c eventids2table.c ripperids.c
 
 redtree.c: redtree.y
 	$(BISON) -t -v -oy.tab.c $<
@@ -19,11 +20,14 @@ redtree.c: redtree.y
 all: check
 static: check
 
-check: $(GEN) $(SRC1)
-	$(RUBY) $(GEN) --mode=check --ids1src=$(SRC1) --ids2src=$(SRC2)
+check: $(GEN) $(SRC1) $(SRC2) $(RIPPERSRC)
+	$(RUBY) $(GEN) --mode=check --ids1src=$(SRC1) --ids2src=$(SRC2) --ripper-ids=$(RIPPERSRC)
 
 eventids1.c: tools/generate.rb $(SRC1)
 	$(RUBY) $(GEN) --mode=eventids1 --ids1src=$(SRC1) --output=$@
 
 eventids2table.c: tools/generate.rb $(SRC2)
 	$(RUBY) $(GEN) --mode=eventids2table --ids2src=$(SRC2) --output=$@
+
+ripperids.c: tools/generate.rb $(RIPPERSRC)
+	$(RUBY) $(GEN) --mode=ripperids --ripper-ids=$(RIPPERSRC) --output=$@

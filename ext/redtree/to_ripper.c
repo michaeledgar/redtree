@@ -9,12 +9,12 @@ static VALUE ripper_dispatch5(VALUE,ID,VALUE,VALUE,VALUE,VALUE,VALUE);
 
 VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index);
 
-#define dispatch0(n)            ripper_dispatch0(parser, TOKEN_PASTE(redtree_id_, n))
-#define dispatch1(n,a)          ripper_dispatch1(parser, TOKEN_PASTE(redtree_id_, n), a)
-#define dispatch2(n,a,b)        ripper_dispatch2(parser, TOKEN_PASTE(redtree_id_, n), a, b)
-#define dispatch3(n,a,b,c)      ripper_dispatch3(parser, TOKEN_PASTE(redtree_id_, n), a, b, c)
-#define dispatch4(n,a,b,c,d)    ripper_dispatch4(parser, TOKEN_PASTE(redtree_id_, n), a, b, c, d)
-#define dispatch5(n,a,b,c,d,e)  ripper_dispatch5(parser, TOKEN_PASTE(redtree_id_, n), a, b, c, d, e)
+#define dispatch0(n)            ripper_dispatch0(self, TOKEN_PASTE(ripper_id_, n))
+#define dispatch1(n,a)          ripper_dispatch1(self, TOKEN_PASTE(ripper_id_, n), a)
+#define dispatch2(n,a,b)        ripper_dispatch2(self, TOKEN_PASTE(ripper_id_, n), a, b)
+#define dispatch3(n,a,b,c)      ripper_dispatch3(self, TOKEN_PASTE(ripper_id_, n), a, b, c)
+#define dispatch4(n,a,b,c,d)    ripper_dispatch4(self, TOKEN_PASTE(ripper_id_, n), a, b, c, d)
+#define dispatch5(n,a,b,c,d,e)  ripper_dispatch5(self, TOKEN_PASTE(ripper_id_, n), a, b, c, d, e)
 
 // VALUE rb_cRedtreeRipper;
 struct redtree_ripper {
@@ -59,13 +59,49 @@ VALUE redtree_ripper_parse(VALUE self) {
   return redtree_ripper_walk(self, ripper_ptr->tree, ripper_ptr->tree->sequence_count - 1);  // root node
 }
 
+#define ARG1  (redtree_ripper_walk(self, tree, index-2))
+#define ARG2  (redtree_ripper_walk(self, tree, index-3))
+#define ARG3  (redtree_ripper_walk(self, tree, index-4))
+#define ARG4  (redtree_ripper_walk(self, tree, index-5))
+#define ARG5  (redtree_ripper_walk(self, tree, index-6))
+#define ARG6  (redtree_ripper_walk(self, tree, index-7))
+#define ARG7  (redtree_ripper_walk(self, tree, index-8))
+#define ARG8  (redtree_ripper_walk(self, tree, index-9))
+#define ARG9  (redtree_ripper_walk(self, tree, index-10))
+#define ARG10 (redtree_ripper_walk(self, tree, index-11))
+#define ARG11 (redtree_ripper_walk(self, tree, index-12))
+#define ARG12 (redtree_ripper_walk(self, tree, index-13))
+#define ARG13 (redtree_ripper_walk(self, tree, index-14))
+
 VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index) {
-	if (index > 0) {
-		// token
+	redtree_sequence_entry entry = tree->sequence[index];
+	if (entry > 0) {
+		// grab line, index into it
+		struct token_location location = tree->token_locations[index];
+		VALUE line = tree->lines[location.start_line - 1];
+		VALUE str = STR_NEW(RSTRING_PTR(line) + location.start_col, location.size);
+		return ripper_dispatch1(self, redtree_token2eventid(tree->tokens[index]), str);
 	} else {
 		// production (rule)
+		if (0) {  // to test ripperids.c generation
+			return dispatch2(stmts_add, dispatch0(stmts_new), ARG1);
+		}
 	}
 }
+
+#undef ARG1 
+#undef ARG2 
+#undef ARG3 
+#undef ARG4 
+#undef ARG5 
+#undef ARG6 
+#undef ARG7 
+#undef ARG8 
+#undef ARG9 
+#undef ARG10
+#undef ARG11
+#undef ARG12
+#undef ARG13
 
 #undef dispatch0
 #undef dispatch1

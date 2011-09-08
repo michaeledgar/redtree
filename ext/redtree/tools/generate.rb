@@ -7,12 +7,13 @@ def main
   mode = nil
   ids1src = nil
   ids2src = nil
+  ripper_src = nil
   template = nil
   output = nil
 
   parser = @parser = OptionParser.new
-  parser.banner = "Usage: #{File.basename($0)} --mode=MODE [--ids1src=PATH] [--output=PATH]"
-  parser.on('--mode=MODE', 'check, eventids1.') {|m|
+  parser.banner = "Usage: #{File.basename($0)} --mode=MODE [--ids1src=PATH] [--ids2src=PATH] [--ripper-ids=PATH] [--output=PATH]"
+  parser.on('--mode=MODE', 'check, eventids1, eventids2table, ripperids.') {|m|
     mode = m
   }
   parser.on('--ids1src=PATH', 'A source file of event-IDs 1 (parse.y).') {|path|
@@ -20,6 +21,9 @@ def main
   }
   parser.on('--ids2src=PATH', 'A source file of event-IDs 2 (eventids2.c).') {|path|
     ids2src = path
+  }
+  parser.on('--ripper-ids=PATH', 'A source file for ripper IDs (to_ripper.c).') {|path|
+    ripper_src = path
   }
   parser.on('--output=PATH', 'An output file.') {|path|
     output = path
@@ -50,6 +54,9 @@ def main
   when 'eventids2table'
     usage 'no --ids2src' unless ids2src
     result = generate_eventids2_table(read_ids2(ids2src), read_tokens(ids2src))
+  when 'ripperids'
+    usage 'no --ripper-ids' unless ripper_src
+    result = generate_ripper_eventids(read_ripper_ids(ripper_src))
   end
   if output
     File.open(output, 'w') {|f|
@@ -93,6 +100,31 @@ def generate_eventids1(ids)
   end
 
   buf << "}\n"
+  buf
+end
+
+def generate_ripper_eventids(ids)
+  buf = ""
+  ids.each do |id, arity|
+    buf << %Q[static ID ripper_id_#{id};\n]
+  end
+  buf << %Q[\n]
+  buf << %Q[static void\n]
+  buf << %Q[redtree_init_ripperids(VALUE self)\n]
+  buf << %Q[{\n]
+  buf << %Q[    VALUE h;\n]
+  buf << %Q[    ID id;\n]
+  ids.each do |id, arity|
+    buf << %Q[    ripper_id_#{id} = rb_intern_const("on_#{id}");\n]
+  end
+  buf << %Q[\n]
+  buf << %Q[    h = rb_hash_new();\n]
+  buf << %Q[    rb_define_const(self, "PARSER_EVENT_TABLE", h);\n]
+  ids.each do |id, arity|
+    buf << %Q[    id = rb_intern_const("#{id}");\n]
+    buf << %Q[    rb_hash_aset(h, ID2SYM(id), INT2NUM(#{arity}));\n]
+  end
+  buf << %Q[}\n]
   buf
 end
 
@@ -142,4 +174,40 @@ def read_tokens(path)
     return f.read.scan(/ *\{([\w]+|'(?:\\n|.)')/).flatten.uniq[0..-2]
   }
 end
+
+def read_ripper_ids(path)
+  strip_locations(read_ripper_ids_with_locations(path))
+end
+
+def strip_locations(h)
+  h.map {|event, list| [event, list.first[1]] }\
+      .sort_by {|event, arity| event.to_s }
+end
+
+def check_arity(h)
+  invalid = false
+  h.each do |event, list|
+    unless list.map {|line, arity| arity }.uniq.size == 1
+      invalid = true
+      locations = list.map {|line, a| "#{line}:#{a}" }.join(', ')
+      $stderr.puts "arity crash [event=#{event}]: #{locations}"
+    end
+  end
+  abort if invalid
+end
+
+def read_ripper_ids_with_locations(path)
+  h = {}
+  File.open(path) {|f|
+    f.each do |line|
+      next if /\A\#\s*define\s+s?dispatch/ =~ line
+      next if /ripper_dispatch/ =~ line
+      line.scan(/dispatch(\d)\((\w+)/) do |arity, event|
+        (h[event] ||= []).push [f.lineno, arity.to_i]
+      end
+    end
+  }
+  h
+end
+
 main
