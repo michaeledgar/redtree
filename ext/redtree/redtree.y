@@ -1350,7 +1350,7 @@ arg   : lhs '=' arg
         }
     | arg '%' arg
         {
-          reduce_rule(arg__arg__DIVIDE__arg, 3);
+          reduce_rule(arg__arg__MOD__arg, 3);
         }
     | arg tPOW arg
         {
@@ -1645,9 +1645,9 @@ primary   : literal
         {
           reduce_rule(primary__tFID, 1);
         }
-    | k_begin
+    | k_begin bodystmt k_end
         {
-          reduce_rule(primary__k_begin, 1);
+          reduce_rule(primary__k_begin__bodystmt__k_end, 3);
         }
     | tLPAREN_ARG expr {lex_state = EXPR_ENDARG;} rparen
         {

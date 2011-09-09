@@ -185,15 +185,19 @@ static VALUE redtree_node_new(struct redtree* tree, uint32_t index) {
   return TypedData_Wrap_Struct(rb_cNode, &node_data_type, node);
 }
 
-static int redtree_node_width(struct redtree_node_ref* node) {
-  // TODO(adgar): Assembly version which is O(1)
-  int32_t pattern = node->tree->sequence[node->index-1];
+static int redtree_node_width_expanded(struct redtree* tree, uint32_t index) {
+  int32_t pattern = tree->sequence[index-1];
   int width = 0;
   while (pattern != 0) {
     ++width;
     pattern >>= 2;
   }
   return width;
+}
+
+static int redtree_node_width(struct redtree_node_ref* node) {
+  // TODO(adgar): Assembly version which is O(1)
+  return redtree_node_width_expanded(node->tree, node->index);
 }
 
 VALUE redtree_node_index(VALUE self) {

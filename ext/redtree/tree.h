@@ -4,6 +4,8 @@
 typedef uint16_t redtree_token;
 typedef int32_t redtree_sequence_entry;
 
+#define MAX_REDTREE_NODE_WIDTH 8
+
 struct redtree {
   redtree_token *tokens;
   struct token_location {
