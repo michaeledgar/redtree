@@ -125,17 +125,19 @@ VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index) {
 
 	redtree_sequence_entry entry = tree->sequence[index];
 	// production (rule)
-	redtree_sequence_entry rule = -entry;
+	redtree_sequence_entry rule = entry & REDTREE_RULENUM_MASK;
 	VALUE kids[MAX_REDTREE_NODE_WIDTH], tmp;
 	int idx = 0, max = redtree_node_width_expanded(tree, index);
-  unsigned int pat = tree->sequence[index-1];
+  unsigned int pat = tree->sequence[index] >> REDTREE_PATTERN_OFFSET;
 
   while (pat) {
-    unsigned int kid_index = index - (idx + 2);
+    unsigned int kid_index = index - (idx + 1);
     redtree_sequence_entry kid_entry = tree->sequence[kid_index];
     if ((pat & 0x3) == REDTREE_NODE_FLAG) {
+      // reduce next rule
       kids[idx] = redtree_ripper_walk(self, tree, kid_entry);
     } else {
+      // scan a token
       // swizzle in new sequence index for lineno/column
       unsigned int old_index = index;
       ripper_ptr->sequence_index = kid_index;

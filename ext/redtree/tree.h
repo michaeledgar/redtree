@@ -2,9 +2,11 @@
 #define CARBONICA_REDTREE_TREE_H_
 
 typedef uint16_t redtree_token;
-typedef int32_t redtree_sequence_entry;
+typedef uint32_t redtree_sequence_entry;
 
 #define MAX_REDTREE_NODE_WIDTH 8
+#define REDTREE_PATTERN_OFFSET 16
+#define REDTREE_RULENUM_MASK 0xffff
 
 struct redtree {
   redtree_token *tokens;
@@ -33,7 +35,6 @@ uint32_t redtree_lex_token(struct redtree* tree,
                        uint16_t token_start_col,
                        uint16_t token_size);
 void redtree_shift_token(struct redtree* tree, uint32_t token_index);
-void redtree_reduce_rule(struct redtree* tree, uint32_t rule_index);
 void redtree_sequence_push(struct redtree* tree, int32_t entry);
 
 VALUE redtree_wrap(VALUE klass, struct redtree* tree);

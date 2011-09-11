@@ -107,10 +107,6 @@ void redtree_shift_token(struct redtree* tree, uint32_t token_index) {
   redtree_sequence_push(tree, token_index);
 }
 
-void redtree_reduce_rule(struct redtree* tree, uint32_t rule_index) {
-  redtree_sequence_push(tree, -rule_index);
-}
-
 void redtree_sequence_push(struct redtree* tree, int32_t entry) {
   tree->sequence[tree->sequence_count] = entry;
   ++tree->sequence_count;
@@ -190,7 +186,7 @@ static VALUE redtree_node_new(VALUE tree_val, uint32_t index) {
 }
 
 static int redtree_node_width_expanded(struct redtree* tree, uint32_t index) {
-  int32_t pattern = tree->sequence[index-1];
+  int32_t pattern = tree->sequence[index] >> 16;
   int width = 0;
   while (pattern != 0) {
     ++width;
@@ -212,7 +208,7 @@ VALUE redtree_node_index(VALUE self) {
 VALUE redtree_node_name(VALUE self) {
   struct redtree_node_ref* node = redtree_unpack_node(self);
   struct redtree* tree = redtree_unpack_tree(node->tree_val);
-  rb_ary_entry(rb_aNames, -tree->sequence[node->index]);
+  rb_ary_entry(rb_aNames, tree->sequence[node->index]);
 }
 
 VALUE redtree_node_size(VALUE self) {
@@ -222,19 +218,19 @@ VALUE redtree_node_size(VALUE self) {
 
 static inline VALUE node_child_node(struct redtree_node_ref*node, int offset) {
   struct redtree* tree = redtree_unpack_tree(node->tree_val);
-  return redtree_node_new(node->tree_val, tree->sequence[node->index - (offset + 2)]);
+  return redtree_node_new(node->tree_val, tree->sequence[node->index - (offset + 1)]);
 }
 
 static inline VALUE node_child_token(struct redtree_node_ref*node, int offset) {
   struct redtree* tree = redtree_unpack_tree(node->tree_val);
-  return redtree_token_new(node->tree_val, tree->sequence[node->index - (offset + 2)]);
+  return redtree_token_new(node->tree_val, tree->sequence[node->index - (offset + 1)]);
 }
 
 VALUE redtree_node_child(VALUE self, VALUE idx) {
   uint32_t offset = FIX2UINT(idx);
   struct redtree_node_ref* node = redtree_unpack_node(self);
   struct redtree* tree = redtree_unpack_tree(node->tree_val);
-  int32_t pattern = tree->sequence[node->index-1];
+  int32_t pattern = tree->sequence[node->index] >> REDTREE_PATTERN_OFFSET;
   int byte = (pattern >> (offset * 2)) & 0x3;
   if (byte == NODE) {
     return node_child_node(node, offset);
@@ -377,14 +373,14 @@ VALUE redtree_walker_walk(VALUE self, VALUE node) {
 
 static VALUE redtree_walker_visit_raw_node(struct redtree_walker_ops* ops, VALUE tree_val, uint32_t index) {
   struct redtree* tree = redtree_unpack_tree(tree_val);
-  uint32_t rule = -tree->sequence[index];
+  uint32_t rule = tree->sequence[index] & REDTREE_RULENUM_MASK;
   VALUE op = ops->ops[rule];
   if (op) {
     return rb_proc_call(op, rb_ary_new3(1, redtree_node_new(tree_val, index)));
   } else {
     // walk children by default
-    uint32_t pattern = tree->sequence[index - 1];
-    int offset = 2;
+    uint32_t pattern = (tree->sequence[index] >> REDTREE_PATTERN_OFFSET);
+    int offset = 1;
     while (pattern) {
       if (pattern & 0x3 == NODE) {
         redtree_walker_visit_raw_node(ops, tree_val, tree->sequence[index - offset]);

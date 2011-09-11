@@ -6121,8 +6121,7 @@ static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, i
     if (val < 0) val = -val;
     redtree_sequence_push(parser->parse_tree, val);
   }
-  redtree_sequence_push(parser->parse_tree, pattern);
-  redtree_sequence_push(parser->parse_tree, -redtree_rule_num);
+  redtree_sequence_push(parser->parse_tree, (pattern << REDTREE_PATTERN_OFFSET) | redtree_rule_num);
   redtree_stack_push(parser, -(parser->parse_tree->sequence_count - 1));
 }
 
