@@ -42,7 +42,7 @@ VALUE redtree_sequence(VALUE self);
 VALUE redtree_root(VALUE self);
 
 struct redtree_node_ref {
-  struct redtree* tree;
+  VALUE tree_val;
   uint32_t index;
 };
 
