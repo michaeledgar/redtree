@@ -14,7 +14,8 @@ SPEC = Gem::Specification.new do |s|
   s.files         = Dir["{lib,test}/**/*"] + ['Rakefile', 'README.md', 'LICENSE'] +
                     Dir['ext/redtree/tools/*'] + Dir['ext/redtree/extra/*'] +
                     ['ext/redtree/lex.c', 'ext/redtree/redtree.y', 'ext/redtree/eventids2.c',
-                     'ext/redtree/tree.h', 'ext/redtree/tree.c', 'ext/redtree/extconf.rb',
+                     'ext/redtree/tree.h', 'ext/redtree/tree.c', 'ext/redtree/to_ripper.h',
+                     'ext/redtree/to_ripper.c', 'ext/redtree/extconf.rb',
                      'ext/redtree/redtree.h', 'ext/redtree/depend']
   s.test_files    = Dir['test/test_*.rb']
   s.require_paths = ['lib', 'ext']
