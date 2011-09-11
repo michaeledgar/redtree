@@ -101,6 +101,13 @@ int32_t* redtree_stack_pop_n_volatile(struct parser_params* parser,
 int32_t* redtree_stack_pop_n(struct parser_params* parser, unsigned int n);
 void redtree_stack_push(struct parser_params* parser, int32_t val);
 
+#define redtree_intern(s) ID2SYM(rb_intern(s))
+static VALUE redtree_id2sym(ID);
+#ifdef __GNUC__
+#define redtree_id2sym(id) ((id) < 256 && rb_ispunct(id) ? \
+         ID2SYM(id) : redtree_id2sym(id))
+#endif
+
 #include "eventids1.c"
 #include "eventids2.c"
 #include "ripperids.c"
@@ -428,13 +435,6 @@ static void redtree_reduce(struct parser_params *parser, int redtree_rule_num, i
 #define reduce_rule(name, size) redtree_reduce(parser, TOKEN_PASTE(redtree_rulenum_, name), size)
 
 #define yyparse redtree_yyparse
-
-#define redtree_intern(s) ID2SYM(rb_intern(s))
-static VALUE redtree_id2sym(ID);
-#ifdef __GNUC__
-#define redtree_id2sym(id) ((id) < 256 && rb_ispunct(id) ? \
-         ID2SYM(id) : redtree_id2sym(id))
-#endif
 
 #define escape_Qundef(x) ((x)==Qundef ? Qnil : (x))
 
@@ -6361,6 +6361,7 @@ redtree_parse0(VALUE parser_v)
 
     TypedData_Get_Struct(parser_v, struct parser_params, &parser_data_type, parser);
     parser_prepare(parser);
+    parser->parse_tree->enc = parser->enc;
     redtree_yyparse((void*)parser);
     return parser->result;
 }

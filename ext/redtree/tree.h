@@ -21,6 +21,7 @@ struct redtree {
   VALUE *lines;
   uint32_t line_count;
   uint32_t line_size;
+  rb_encoding *enc;
 };
 
 struct redtree* redtree_allocate();

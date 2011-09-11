@@ -7,6 +7,7 @@
 #define INITIAL_SEQUENCE_COUNT 256
 
 #define NODE 0x3
+#define REDTREE_NODE_FLAG 0x3
 #define LEAF 0x2
 
 static VALUE redtree_node_new(struct redtree* tree, uint32_t index);
@@ -27,6 +28,7 @@ void redtree_init_struct(struct redtree* tree) {
   tree->lines = ALLOC_N(VALUE, INITIAL_LINE_COUNT);
   tree->line_size = INITIAL_LINE_COUNT;
   tree->line_count = 0;
+  tree->enc = 0;
 }
 
 void redtree_add_line(struct redtree* tree, VALUE str) {

@@ -7,7 +7,7 @@
 # You can distribute and/or modify this program under the Ruby License.
 # For details of Ruby License, see ruby/COPYING.
 #
-module Redtree
+class Redtree
   class Ripper
 
     # Parses Ruby program read from _src_.

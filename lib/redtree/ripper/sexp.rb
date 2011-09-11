@@ -10,7 +10,7 @@
 
 require_relative 'core'
 
-module Redtree
+class Redtree
   class Ripper
 
     # [EXPERIMENTAL]
@@ -28,8 +28,8 @@ module Redtree
     #           [:paren, [:params, [[:@ident, "a", [1, 6]]], nil, nil, nil, nil]],
     #           [:bodystmt, [[:var_ref, [:@kw, "nil", [1, 9]]]], nil, nil, nil]]]]
     #
-    def Ripper.sexp(src, filename = '-', lineno = 1)
-      SexpBuilderPP.new(src, filename, lineno).parse
+    def Ripper.sexp(src)
+      SexpBuilderPP.new(src).parse
     end
 
     # [EXPERIMENTAL]
@@ -52,11 +52,11 @@ module Redtree
     #             nil,
     #             nil]]]]
     #
-    def Ripper.sexp_raw(src, filename = '-', lineno = 1)
-      SexpBuilder.new(src, filename, lineno).parse
+    def Ripper.sexp_raw(src)
+      SexpBuilder.new(src).parse
     end
 
-    class SexpBuilderPP < ::Ripper   #:nodoc:
+    class SexpBuilderPP < Ripper   #:nodoc:
       private
 
       PARSER_EVENT_TABLE.each do |event, arity|
@@ -85,13 +85,13 @@ module Redtree
       SCANNER_EVENTS.each do |event|
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(tok)
-            [:@#{event}, tok, [lineno(), column()]]
+            [:@#{event}, tok, [1, 1]]
           end
         End
       end
     end
 
-    class SexpBuilder < ::Ripper   #:nodoc:
+    class SexpBuilder < Ripper   #:nodoc:
       private
 
       PARSER_EVENTS.each do |event|
@@ -106,7 +106,7 @@ module Redtree
       SCANNER_EVENTS.each do |event|
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(tok)
-            [:@#{event}, tok, [lineno(), column()]]
+            [:@#{event}, tok, [1, 1]]
           end
         End
       end
