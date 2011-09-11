@@ -50,6 +50,7 @@ struct redtree_node_ref {
 VALUE redtree_node_name(VALUE self);
 VALUE redtree_node_index(VALUE self);
 VALUE redtree_node_size(VALUE self);
+VALUE redtree_node_tree(VALUE self);
 VALUE redtree_node_child(VALUE self, VALUE idx);
 VALUE redtree_node_child_node(VALUE self, VALUE idx);
 VALUE redtree_node_child_token(VALUE self, VALUE idx);
@@ -59,6 +60,7 @@ VALUE redtree_token_index(VALUE self);
 VALUE redtree_token_line_number(VALUE self);
 VALUE redtree_token_column(VALUE self);
 VALUE redtree_token_size(VALUE self);
+VALUE redtree_token_tree(VALUE self);
 
 VALUE redtree_walker_walk(VALUE self, VALUE node);
 VALUE redtree_walker_visit_node(VALUE self, VALUE node);

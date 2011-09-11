@@ -13,6 +13,14 @@ require_relative 'core'
 class Redtree
   class Ripper
 
+    class Node < Array
+      attr_reader :parse_node
+      def initialize(body, parse_node)
+        replace(body)
+        @parse_node = parse_node
+      end
+    end
+
     # [EXPERIMENTAL]
     # Parses +src+ and create S-exp tree.
     # Returns more readable tree rather than Ripper.sexp_raw.
@@ -63,20 +71,20 @@ class Redtree
         if /_new\z/ =~ event.to_s and arity == 0
           module_eval(<<-End, __FILE__, __LINE__ + 1)
             def on_#{event}
-              []
+              Node.new([], curnode())
             end
           End
         elsif /_add\z/ =~ event.to_s
           module_eval(<<-End, __FILE__, __LINE__ + 1)
             def on_#{event}(list, item)
               list.push item
-              list
+              Node.new(list, curnode())
             end
           End
         else
           module_eval(<<-End, __FILE__, __LINE__ + 1)
             def on_#{event}(*args)
-              [:#{event}, *args]
+              Node.new([:#{event}, *args], curnode())
             end
           End
         end
@@ -98,7 +106,7 @@ class Redtree
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(*args)
             args.unshift :#{event}
-            args
+            Node.new(args, curnode())
           end
         End
       end

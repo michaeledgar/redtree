@@ -88,6 +88,12 @@ VALUE redtree_ripper_parse(VALUE self) {
   return redtree_ripper_walk(self, tree, tree->sequence_count - 1);  // root node
 }
 
+VALUE redtree_ripper_curnode(VALUE self) {
+  struct redtree_ripper *ripper_ptr;
+  TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
+  return redtree_node_new(ripper_ptr->tree_val, ripper_ptr->sequence_index);
+}
+
 VALUE redtree_ripper_lineno(VALUE self) {
   struct redtree_ripper *ripper_ptr;
   TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
@@ -121,7 +127,6 @@ VALUE redtree_ripper_column(VALUE self) {
 VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index) {
   struct redtree_ripper *ripper_ptr;
   TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
-  ripper_ptr->sequence_index = index;
 
 	redtree_sequence_entry entry = tree->sequence[index];
 	// production (rule)
@@ -152,6 +157,9 @@ VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index) {
     ++idx;
     pat >>= 2;
 	}
+
+  // Set sequence index for any subsequent dispatches
+  ripper_ptr->sequence_index = index;
 
 	switch (rule) {
 		case redtree_rulenum_program__top_compstmt:

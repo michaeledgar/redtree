@@ -186,7 +186,7 @@ static VALUE redtree_node_new(VALUE tree_val, uint32_t index) {
 }
 
 static int redtree_node_width_expanded(struct redtree* tree, uint32_t index) {
-  int32_t pattern = tree->sequence[index] >> 16;
+  int32_t pattern = tree->sequence[index] >> REDTREE_PATTERN_OFFSET;
   int width = 0;
   while (pattern != 0) {
     ++width;
@@ -208,12 +208,17 @@ VALUE redtree_node_index(VALUE self) {
 VALUE redtree_node_name(VALUE self) {
   struct redtree_node_ref* node = redtree_unpack_node(self);
   struct redtree* tree = redtree_unpack_tree(node->tree_val);
-  rb_ary_entry(rb_aNames, tree->sequence[node->index]);
+  rb_ary_entry(rb_aNames, tree->sequence[node->index] & REDTREE_RULENUM_MASK);
 }
 
 VALUE redtree_node_size(VALUE self) {
   struct redtree_node_ref* node = redtree_unpack_node(self);
   return INT2FIX(redtree_node_width(node));
+}
+
+VALUE redtree_node_tree(VALUE self) {
+  struct redtree_node_ref* node = redtree_unpack_node(self);
+  return node->tree_val;
 }
 
 static inline VALUE node_child_node(struct redtree_node_ref*node, int offset) {
@@ -300,6 +305,11 @@ VALUE redtree_token_size(VALUE self) {
   struct redtree_node_ref* node = redtree_unpack_token(self);
   struct redtree* tree = redtree_unpack_tree(node->tree_val);
   return INT2FIX((tree->token_locations + node->index)->size);
+}
+
+VALUE redtree_token_tree(VALUE self) {
+  struct redtree_node_ref* node = redtree_unpack_token(self);
+  return node->tree_val;
 }
 
 /********************* TREE WALKER METHODS *********************/

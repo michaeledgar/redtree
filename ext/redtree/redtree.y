@@ -6510,6 +6510,7 @@ Init_redtree(void)
     rb_define_method(rb_cNode, "name", redtree_node_name, 0);
     rb_define_method(rb_cNode, "index", redtree_node_index, 0);
     rb_define_method(rb_cNode, "size", redtree_node_size, 0);
+    rb_define_method(rb_cNode, "tree", redtree_node_tree, 0);
     rb_define_method(rb_cNode, "child", redtree_node_child, 1);
     rb_alias(rb_cNode, rb_intern("[]"), rb_intern("child"));
     rb_define_method(rb_cNode, "child_node", redtree_node_child_node, 1);
@@ -6522,6 +6523,7 @@ Init_redtree(void)
     rb_define_method(rb_cToken, "line_number", redtree_token_line_number, 0);
     rb_define_method(rb_cToken, "column", redtree_token_column, 0);
     rb_define_method(rb_cToken, "size", redtree_token_size, 0);
+    rb_define_method(rb_cToken, "tree", redtree_token_tree, 0);
 
     rb_mWalker = rb_define_module_under(rb_cTree, "Walker");
     rb_mWalkerClassMethods = rb_define_module_under(rb_mWalker, "ClassMethods");
@@ -6540,6 +6542,7 @@ Init_redtree(void)
     rb_define_method(rb_cRedtreeRipper, "parse", redtree_ripper_parse, 0);
     rb_define_method(rb_cRedtreeRipper, "lineno", redtree_ripper_lineno, 0);
     rb_define_method(rb_cRedtreeRipper, "column", redtree_ripper_column, 0);
+    rb_define_method(rb_cRedtreeRipper, "curnode", redtree_ripper_curnode, 0);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);
