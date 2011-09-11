@@ -6539,14 +6539,14 @@ Init_redtree(void)
     rb_define_alloc_func(rb_cRedtreeRipper, redtree_ripper_allocate);
     rb_define_method(rb_cRedtreeRipper, "initialize", redtree_ripper_initialize, 1);
     rb_define_method(rb_cRedtreeRipper, "parse", redtree_ripper_parse, 0);
+    rb_define_method(rb_cRedtreeRipper, "lineno", redtree_ripper_lineno, 0);
+    rb_define_method(rb_cRedtreeRipper, "column", redtree_ripper_column, 0);
 
     rb_define_const(Redtree, "Version", rb_usascii_str_new2(Redtree_VERSION));
     rb_define_alloc_func(Redtree, redtree_s_allocate);
     rb_define_method(Redtree, "initialize", redtree_initialize, -1);
     rb_define_method(Redtree, "parse", redtree_parse, 0);
-    rb_define_method(Redtree, "column", redtree_column, 0);
     rb_define_method(Redtree, "filename", redtree_filename, 0);
-    rb_define_method(Redtree, "lineno", redtree_lineno, 0);
     rb_define_method(Redtree, "end_seen?", rb_parser_end_seen_p, 0);
     rb_define_method(Redtree, "encoding", rb_parser_encoding, 0);
     rb_define_method(Redtree, "yydebug", rb_parser_get_yydebug, 0);

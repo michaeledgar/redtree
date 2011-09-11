@@ -85,7 +85,7 @@ class Redtree
       SCANNER_EVENTS.each do |event|
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(tok)
-            [:@#{event}, tok, [1, 1]]
+            [:@#{event}, tok, [lineno(), column()]]
           end
         End
       end
@@ -106,7 +106,7 @@ class Redtree
       SCANNER_EVENTS.each do |event|
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(tok)
-            [:@#{event}, tok, [1, 1]]
+            [:@#{event}, tok, [lineno(), column()]]
           end
         End
       end

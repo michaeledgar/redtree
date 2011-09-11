@@ -47,6 +47,7 @@ VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index);
 // VALUE rb_cRedtreeRipper;
 struct redtree_ripper {
   struct redtree* tree;
+  uint32_t sequence_index;
 };
 
 static void
@@ -78,6 +79,7 @@ VALUE redtree_ripper_initialize(VALUE self, VALUE tree) {
   struct redtree_ripper *ripper_ptr;
   TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
   ripper_ptr->tree = tree_ptr;
+  ripper_ptr->sequence_index = 0;
   return Qnil;
 }
 
@@ -87,7 +89,39 @@ VALUE redtree_ripper_parse(VALUE self) {
   return redtree_ripper_walk(self, ripper_ptr->tree, ripper_ptr->tree->sequence_count - 1);  // root node
 }
 
+VALUE redtree_ripper_lineno(VALUE self) {
+  struct redtree_ripper *ripper_ptr;
+  TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
+  redtree_sequence_entry entry = ripper_ptr->tree->sequence[ripper_ptr->sequence_index];
+  if (entry > 0) {
+    // token
+    struct token_location location = ripper_ptr->tree->token_locations[entry];
+    return INT2FIX(location.start_line);
+  } else {
+    // rule
+    return Qnil;
+  }
+}
+
+VALUE redtree_ripper_column(VALUE self) {
+  struct redtree_ripper *ripper_ptr;
+  TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
+  redtree_sequence_entry entry = ripper_ptr->tree->sequence[ripper_ptr->sequence_index];
+  if (entry > 0) {
+    // token
+    struct token_location location = ripper_ptr->tree->token_locations[entry];
+    return INT2FIX(location.start_col);
+  } else {
+    // rule
+    return Qnil;
+  }
+}
+
 VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index) {
+  struct redtree_ripper *ripper_ptr;
+  TypedData_Get_Struct(self, struct redtree_ripper, &redtree_ripper_data_type, ripper_ptr);
+  ripper_ptr->sequence_index = index;
+
 	redtree_sequence_entry entry = tree->sequence[index];
 	printf("Walking index %d which is entry %d\n", index, entry);
 	// production (rule)
@@ -99,14 +133,21 @@ VALUE redtree_ripper_walk(VALUE self, struct redtree* tree, uint32_t index) {
   unsigned int pat = tree->sequence[index-1];
 
   while (pat) {
-    redtree_sequence_entry kid_entry = tree->sequence[index - (idx + 2)];
+    unsigned int kid_index = index - (idx + 2);
+    redtree_sequence_entry kid_entry = tree->sequence[kid_index];
     if ((pat & 0x3) == REDTREE_NODE_FLAG) {
       kids[idx] = redtree_ripper_walk(self, tree, kid_entry);
     } else {
+      // swizzle in new sequence index for lineno/column
+      unsigned int old_index = index;
+      ripper_ptr->sequence_index = kid_index;
+
       struct token_location location = tree->token_locations[kid_entry];
       VALUE line = tree->lines[location.start_line - 1];
       VALUE str = rb_enc_str_new(RSTRING_PTR(line) + location.start_col, location.size, tree->enc);
       kids[idx] = ripper_dispatch1(self, redtree_token2eventid(tree->tokens[kid_entry]), str);
+      // swizzle out old sequence index
+      ripper_ptr->sequence_index = old_index;
     }
     ++idx;
     pat >>= 2;
