@@ -12,12 +12,45 @@ require_relative 'core'
 
 class Redtree
   class Ripper
-
     class Node < Array
       attr_reader :parse_node
       def initialize(body, parse_node)
         replace(body)
         @parse_node = parse_node
+        @source_start = nil
+        @source_stop = nil
+      end
+
+      def source_start
+        @source_start ||= parse_node.source_start
+        return @source_start
+      end
+
+      def source_stop
+        @source_stop ||= parse_node.source_stop
+        return @source_stop
+      end
+    end
+
+    class Token < Array
+      attr_reader :parse_node
+      def initialize(body, parse_node)
+        replace(body)
+        @parse_node = parse_node
+      end
+
+      def size
+        self[1].size
+      end
+
+      def source_start
+        loc = self[2]
+        Location.new(loc[0], loc[1])
+      end
+
+      def source_stop
+        loc = self[2]
+        Location.new(loc[0], loc[1] + size - 1)
       end
     end
 
@@ -93,7 +126,7 @@ class Redtree
       SCANNER_EVENTS.each do |event|
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(tok)
-            [:@#{event}, tok, [lineno(), column()]]
+            Token.new([:@#{event}, tok, [lineno(), column()]], curnode())
           end
         End
       end
@@ -114,7 +147,7 @@ class Redtree
       SCANNER_EVENTS.each do |event|
         module_eval(<<-End, __FILE__, __LINE__ + 1)
           def on_#{event}(tok)
-            [:@#{event}, tok, [lineno(), column()]]
+            Token.new([:@#{event}, tok, [lineno(), column()]], curnode())
           end
         End
       end

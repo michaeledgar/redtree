@@ -18,6 +18,28 @@ class Redtree
   	  	  }
   	  	}
   	  end
+
+      def source_start
+        return @source_start if (@source_start ||= nil)
+        children.each do |child|
+          if (start = child.source_start)
+            @source_start = start
+            break
+          end
+        end
+        return @source_start
+      end
+
+      def source_stop
+        return @source_stop if (@source_stop ||= nil)
+        children.reverse_each do |child|
+          if (start = child.source_stop)
+            @source_stop = start
+            break
+          end
+        end
+        return @source_stop
+      end
   	end
   end
 end
